@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Claytics | Moldea tus datos</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="assets/css/style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+    <script src="assets/js/agents.js"></script>
+</head>
+
+<body>
+    <div class="clay-bg">
+        <div class="blob clay-blob blob-1"></div>
+        <div class="blob clay-blob blob-2"></div>
+    </div>
+
+    <main class="app-container" id="main-app">
+        <!-- SECCIÓN 1: BIENVENIDA / CARGA -->
+        <section id="welcome-section">
+            <header class="brand">
+                <h1>Claytics</h1>
+            </header>
+
+            <div class="drop-zone" id="drop-zone">
+                <i class="fas fa-shapes"></i>
+                <h3>¡Suelta tu archivo aquí!</h3>
+                <p>Excel, CSV o TXT. Nosotros hacemos el trabajo duro.</p>
+                <input type="file" id="file-input" class="hidden" accept=".csv, .xlsx, .xls, .txt">
+            </div>
+
+            <button class="btn-start hidden" id="start-btn">
+                Analizar data <i class="fas fa-magic"></i>
+            </button>
+        </section>
+
+        <!-- SECCIÓN 2: PROCESANDO (MOLDING) -->
+        <section id="molding-section" class="hidden">
+            <div class="clay-loader"></div>
+            <h2>Moldeando tus datos...</h2>
+            <p>Nuestros agentes están preparando el lienzo.</p>
+        </section>
+
+        <!-- SECCIÓN 3: TABLERO / INTERACCIÓN -->
+        <section id="dashboard-section" class="hidden dashboard-view">
+            <div class="data-header">
+                <h2><i class="fas fa-chart-line"></i> Resumen de tu Data</h2>
+                <div class="dashboard-header-actions">
+                    <button class="btn-change-file" id="change-file-btn">
+                        <i class="fas fa-folder-open"></i> Cambiar Archivo
+                    </button>
+                    <input type="file" id="change-file-input" class="hidden" accept=".csv, .xlsx, .xls, .txt">
+                </div>
+            </div>
+
+            <!-- Contenedor de Métricas Dinámicas -->
+            <div class="kpi-grid" id="kpi-container"></div>
+
+            <!-- Insights Avanzados -->
+            <div class="insights-grid" id="insights-container"></div>
+
+            <!-- SECCIÓN 4: VISTA PREVIA Y LABORATORIO DE ANÁLISIS -->
+            <div id="data-preview-section" class="data-preview-container hidden">
+                <div class="preview-header">
+                    <div class="preview-title-wrap">
+                        <h3><i class="fas fa-database"></i> Vista Previa de tu Data</h3>
+                        <p class="preview-subtitle-meta" id="preview-meta">Cargando dimensiones...</p>
+                    </div>
+                    <div class="preview-header-actions">
+                        <div class="search-box">
+                            <i class="fas fa-search search-icon"></i>
+                            <input type="text" id="table-search" placeholder="Buscar en la tabla de datos...">
+                        </div>
+                        <button class="btn-clean" id="clean-btn">
+                            <i class="fas fa-broom"></i> Limpiar Data
+                        </button>
+                    </div>
+                </div>
+
+                <!-- PANEL DE FILTROS AVANZADOS (COLUMNAS Y FILAS) -->
+                <div class="filter-panel-card">
+                    <div class="filter-panel-header" id="filter-toggle-btn">
+                        <span><i class="fas fa-filter"></i> Panel de Filtros Avanzados (Columnas y Filas)</span>
+                        <i class="fas fa-chevron-down toggle-icon" id="filter-toggle-icon"></i>
+                    </div>
+                    <div class="filter-panel-body hidden" id="filter-panel-body">
+                        <div class="filter-sections">
+                            <!-- Sección 1: Visibilidad de Columnas -->
+                            <div class="filter-section">
+                                <h5><i class="fas fa-columns"></i> Visibilidad de Columnas</h5>
+                                <p class="filter-help">Desmarca las columnas que deseas ocultar de la vista previa:</p>
+                                <div class="filter-cols-grid" id="filter-cols-container">
+                                    <!-- Se puebla dinámicamente -->
+                                </div>
+                            </div>
+
+                            <!-- Sección 2: Reglas de Filtrado de Filas -->
+                            <div class="filter-section">
+                                <h5><i class="fas fa-align-left"></i> Filtro de Filas (Condicional)</h5>
+                                <p class="filter-help">Aplica reglas de negocio o filtros matemáticos a los registros:
+                                </p>
+                                <div class="filter-row-rules">
+                                    <div class="rule-field">
+                                        <label>Columna:</label>
+                                        <div class="filter-select-wrapper">
+                                            <select id="filter-row-col" class="filter-input-select">
+                                                <!-- Se puebla dinámicamente -->
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="rule-field">
+                                        <label>Condición:</label>
+                                        <div class="filter-select-wrapper">
+                                            <select id="filter-row-cond" class="filter-input-select">
+                                                <option value="none">Ninguna regla (Mostrar todas)</option>
+                                                <option value="contains">Contiene</option>
+                                                <option value="equals">Es igual a</option>
+                                                <option value="gt">Mayor que (&gt;)</option>
+                                                <option value="lt">Menor que (&lt;)</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="rule-field">
+                                        <label>Valor:</label>
+                                        <input type="text" id="filter-row-val" class="filter-input-text"
+                                            placeholder="Ej. Muebles o 500">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="filter-panel-actions">
+                            <button id="btn-apply-filters" class="btn-apply-f"><i class="fas fa-circle-check"></i>
+                                Aplicar Filtros</button>
+                            <button id="btn-reset-filters" class="btn-reset-f"><i class="fas fa-trash-can"></i> Limpiar
+                                Filtros</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- LABORATORIO DE ANÁLISIS INTERACTIVO -->
+                <div class="filter-panel-card" id="lab-panel-card">
+                    <div class="filter-panel-header" id="lab-toggle-btn">
+                        <span><i class="fas fa-flask"></i> Laboratorio de Análisis</span>
+                        <i class="fas fa-chevron-down toggle-icon" id="lab-toggle-icon"></i>
+                    </div>
+                    <div class="filter-panel-body hidden" id="lab-panel-body">
+
+                        <div class="lab-field" style="display:flex; gap: 15px; margin-bottom: 20px;">
+                            <div style="flex: 1;">
+                                <label for="analysis-type-select">Filtrar por tipo:</label>
+                                <div class="select-wrapper">
+                                    <select id="analysis-type-select" class="lab-select">
+                                        <option value="all">Todos los tipos</option>
+                                        <option value="Numeric">Numérico</option>
+                                        <option value="Categorical">Texto / Categorico</option>
+                                        <option value="Date">Fecha</option>
+                                        <option value="ID">ID</option>
+                                        <option value="Boolean">Booleano</option>
+                                    </select>
+                                    <i class="fas fa-chevron-down select-chevron"></i>
+                                </div>
+                            </div>
+                            <div style="flex: 2;">
+                                <label for="analysis-col-select">Selecciona una columna:</label>
+                                <div class="select-wrapper">
+                                    <select id="analysis-col-select" class="lab-select">
+                                        <!-- Se puebla dinámicamente -->
+                                    </select>
+                                    <i class="fas fa-chevron-down select-chevron"></i>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Botones para Columnas Numéricas -->
+                        <div class="analysis-grid" id="analysis-grid-number">
+                            <button class="btn-lab" data-action="sum" title="Calcular la suma total">
+                                <span class="btn-lab-icon"><i class="fas fa-plus"></i></span>
+                                <span class="btn-lab-text">Suma</span>
+                            </button>
+                            <button class="btn-lab" data-action="avg" title="Calcular el promedio">
+                                <span class="btn-lab-icon"><i class="fas fa-divide"></i></span>
+                                <span class="btn-lab-text">Promedio</span>
+                            </button>
+                            <button class="btn-lab" data-action="count" title="Contar registros">
+                                <span class="btn-lab-icon"><i class="fas fa-hashtag"></i></span>
+                                <span class="btn-lab-text">Conteo</span>
+                            </button>
+                            <button class="btn-lab" data-action="max" title="Obtener el valor máximo">
+                                <span class="btn-lab-icon"><i class="fas fa-arrow-up"></i></span>
+                                <span class="btn-lab-text">Máximo</span>
+                            </button>
+                            <button class="btn-lab" data-action="min" title="Obtener el valor mínimo">
+                                <span class="btn-lab-icon"><i class="fas fa-arrow-down"></i></span>
+                                <span class="btn-lab-text">Mínimo</span>
+                            </button>
+                            <button class="btn-lab" data-action="median" title="Calcular la mediana">
+                                <span class="btn-lab-icon"><i class="fas fa-scale-balanced"></i></span>
+                                <span class="btn-lab-text">Mediana</span>
+                            </button>
+                            <button class="btn-lab" data-action="mode" title="Encontrar la moda">
+                                <span class="btn-lab-icon"><i class="fas fa-bullseye"></i></span>
+                                <span class="btn-lab-text">Moda</span>
+                            </button>
+                            <button class="btn-lab" data-action="stddev" title="Calcular la desviación estándar">
+                                <span class="btn-lab-icon"><i class="fas fa-chart-line"></i></span>
+                                <span class="btn-lab-text">Desv. Est.</span>
+                            </button>
+                        </div>
+
+                        <!-- Botones para Columnas de Texto -->
+                        <div class="analysis-grid hidden" id="analysis-grid-text">
+                            <button class="btn-lab text-action" data-action="uppercase"
+                                title="Convertir todo a MAYÚSCULAS">
+                                <span class="btn-lab-icon"><i class="fas fa-font"></i></span>
+                                <span class="btn-lab-text">Mayúsculas</span>
+                            </button>
+                            <button class="btn-lab text-action" data-action="lowercase"
+                                title="Convertir todo a minúsculas">
+                                <span class="btn-lab-icon"><i class="fas fa-a"></i></span>
+                                <span class="btn-lab-text">Minúsculas</span>
+                            </button>
+                            <button class="btn-lab text-action" data-action="titlecase"
+                                title="Capitalizar la primera letra de cada palabra">
+                                <span class="btn-lab-icon"><i class="fas fa-heading"></i></span>
+                                <span class="btn-lab-text">Capitalizar</span>
+                            </button>
+                            <button class="btn-lab text-action" data-action="trim"
+                                title="Eliminar espacios en blanco al inicio y al final">
+                                <span class="btn-lab-icon"><i class="fas fa-text-width"></i></span>
+                                <span class="btn-lab-text">Quitar Espacios</span>
+                            </button>
+                            <button class="btn-lab text-action" data-action="frequency"
+                                title="Analizar frecuencia de palabras clave">
+                                <span class="btn-lab-icon"><i class="fas fa-chart-pie"></i></span>
+                                <span class="btn-lab-text">Frecuencia</span>
+                            </button>
+                        </div>
+
+                        <!-- Panel de Resultado Claymórfico Premium -->
+                        <div class="lab-result-card hidden" id="lab-result-card">
+                            <div class="result-header">
+                                <span id="lab-result-title">Resultado de Suma</span>
+                                <button class="btn-close-result" id="btn-clear-analysis" title="Limpiar"><i
+                                        class="fas fa-times"></i></button>
+                            </div>
+                            <div class="result-value" id="lab-result-value">S/ 0.00</div>
+                            <div class="result-explanation" id="lab-result-desc">
+                                Selecciona una función para calcular estadísticas instantáneas.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="preview-layout">
+                    <!-- Tabla de Datos (Vista de hasta 50 filas) -->
+                    <div class="table-wrapper">
+                        <table id="preview-table">
+                            <!-- Se renderiza dinámicamente -->
+                        </table>
+                        <div id="data-clean-notice" class="clean-notice hidden">
+                            <i class="fas fa-sparkles"></i> Data saneada y optimizada con éxito por el Agente de
+                            Limpieza.
+                        </div>
+                    </div>
+
+                    <!-- Botón Cambiar de Hoja (solo visible con Excel multi-hoja) -->
+                    <div class="switch-sheet-bar hidden" id="switch-sheet-bar">
+                        <div class="switch-sheet-info">
+                            <i class="fas fa-layer-group"></i>
+                            <span id="switch-sheet-label">Hoja activa: —</span>
+                        </div>
+                        <button class="btn-switch-sheet" id="switch-sheet-btn">
+                            <i class="fas fa-exchange-alt"></i> Cambiar de Hoja
+                        </button>
+                    </div>
+
+                    <!-- Panel de Descarga Inferior -->
+                    <div class="table-footer-actions">
+                        <div class="export-label">
+                            <i class="fas fa-download"></i> <span>Exportar esta vista en formato:</span>
+                        </div>
+                        <div class="export-group">
+                            <button class="btn-export" data-format="excel" id="export-excel-btn" title="Descargar como Excel">
+                                <i class="fas fa-file-excel"></i> Excel
+                            </button>
+                            <button class="btn-export" data-format="csv" id="export-csv-btn" title="Descargar como CSV">
+                                <i class="fas fa-file-csv"></i> CSV
+                            </button>
+                            <button class="btn-export" data-format="pdf" id="export-pdf-btn" title="Descargar como PDF">
+                                <i class="fas fa-file-pdf"></i> PDF
+                            </button>
+                            <button class="btn-export" data-format="txt" id="export-txt-btn" title="Descargar como TXT">
+                                <i class="fas fa-file-lines"></i> TXT
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- ══════════════════════════════════════════════
+         MODAL: AGENTE DE LIMPIEZA
+         ══════════════════════════════════════════════ -->
+    <div id="clean-modal" class="clean-modal hidden">
+        <div class="clean-panel">
+
+            <!-- Header del panel -->
+            <div class="clean-header">
+                <div class="clean-header-left">
+                    <div class="clean-agent-icon"><i class="fas fa-broom"></i></div>
+                    <div>
+                        <div class="clean-agent-name">Agente Limpieza</div>
+                        <h3 class="clean-title">Diagnóstico de tu Data</h3>
+                    </div>
+                </div>
+                <button class="clean-close-btn" id="clean-close-btn">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <!-- PASO 1: Escaneando -->
+            <div id="clean-step-scanning" class="clean-step">
+                <div class="clean-scanning-anim">
+                    <div class="clean-pulse"></div>
+                    <i class="fas fa-magnifying-glass-chart"></i>
+                </div>
+                <p class="clean-scanning-text">Analizando la calidad de tu data...</p>
+            </div>
+
+            <!-- PASO 2: Resultados con issues -->
+            <div id="clean-step-results" class="clean-step hidden">
+                <p class="clean-subtitle" id="clean-subtitle-text"></p>
+                <div id="clean-issues-list" class="clean-issues-list"></div>
+
+                <div class="clean-actions" style="flex-wrap: wrap; justify-content: center;">
+                    <button class="btn-select-all" id="btn-select-all" style="flex: 1 1 auto; min-width: 140px;">
+                        <i class="fas fa-check-double"></i> Seleccionar todo
+                    </button>
+                    <button class="btn-apply-clean" id="btn-preview-errors"
+                        style="flex: 1 1 auto; min-width: 140px; background: white; color: var(--p-primary); border: 2px solid var(--p-primary);">
+                        <i class="fas fa-eye"></i> Filtrar Errores
+                    </button>
+                    <button class="btn-apply-clean" id="btn-apply-clean" style="flex: 2 1 auto; min-width: 100%;">
+                        <i class="fas fa-wand-magic-sparkles"></i> Aplicar correcciones
+                    </button>
+                </div>
+            </div>
+
+            <!-- PASO 3: Sin problemas -->
+            <div id="clean-step-clean" class="clean-step hidden">
+                <div class="clean-perfect">
+                    <i class="fas fa-circle-check"></i>
+                    <h3>¡Tu data está impecable!</h3>
+                    <p>No se encontraron problemas. Los datos están listos para el análisis.</p>
+                </div>
+            </div>
+
+            <!-- PASO 4: Éxito post-limpieza -->
+            <div id="clean-step-done" class="clean-step hidden">
+                <div class="clean-success-banner">
+                    <i class="fas fa-sparkles"></i>
+                    <div>
+                        <strong>¡Limpieza completada!</strong>
+                        <p id="clean-summary-text"></p>
+                    </div>
+                </div>
+                <button class="btn-apply-clean" id="btn-close-done" style="margin-top:20px; width:100%;">
+                    Ver dashboard actualizado
+                </button>
+            </div>
+
+        </div>
+        <!-- BANNER FLOTANTE DE RETORNO A LA LIMPIEZA -->
+        <div id="restore-clean-banner" class="restore-banner hidden">
+            <span><i class="fas fa-wand-magic-sparkles" style="color:var(--p-success)"></i> Estás inspeccionando la
+                tabla.</span>
+            <button id="btn-restore-clean" class="btn-restore"><i class="fas fa-undo"></i> Volver a la Limpieza</button>
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════
+         MODAL: SELECCIÓN DE HOJA DE EXCEL
+         ══════════════════════════════════════════════ -->
+    <div id="sheet-modal" class="sheet-modal hidden">
+        <div class="sheet-panel">
+            <div class="sheet-header">
+                <div class="sheet-header-left">
+                    <div class="sheet-agent-icon"><i class="fas fa-file-excel"></i></div>
+                    <div>
+                        <div class="sheet-agent-name">Hojas Disponibles</div>
+                        <h3 class="sheet-title">Selecciona una hoja</h3>
+                    </div>
+                </div>
+                <button class="sheet-close-btn" id="sheet-close-btn">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="sheet-body">
+                <p class="sheet-subtitle">Este archivo Excel contiene varias hojas de trabajo. Elige la que deseas analizar:</p>
+                <div id="sheet-buttons-list" class="sheet-buttons-list">
+                    <!-- Se puebla dinámicamente -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="assets/js/app.js"></script>
+</body>
+
+</html>
