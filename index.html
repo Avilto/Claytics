@@ -22,8 +22,70 @@
     </div>
 
     <main class="app-container" id="main-app">
-        <!-- SECCIÓN 1: BIENVENIDA / CARGA -->
-        <section id="welcome-section">
+        <!-- SECCIÓN 0: LOGIN -->
+        <section id="login-section" class="login-view">
+            <header class="brand">
+                <h1>Claytics</h1>
+            </header>
+            <div class="login-card">
+                <h2>Crea tu cuenta</h2>
+                <p>Ingresa para empezar a moldear tus datos.</p>
+                <form id="login-form">
+                    <div class="form-group">
+                        <label>Nombre Completo</label>
+                        <input type="text" id="login-name" required placeholder="Ej. Ana Pérez">
+                    </div>
+                    <div class="form-group">
+                        <label>Edad</label>
+                        <input type="number" id="login-age" required placeholder="Ej. 28">
+                    </div>
+                    <div class="form-group">
+                        <label>Correo Electrónico</label>
+                        <input type="email" id="login-email" required placeholder="tu@correo.com">
+                    </div>
+                    <div class="form-group">
+                        <label>Sector de Trabajo</label>
+                        <select id="login-sector" required>
+                            <option value="">Selecciona tu sector</option>
+                            <option value="Tecnología">Tecnología</option>
+                            <option value="Salud">Salud</option>
+                            <option value="Finanzas">Finanzas</option>
+                            <option value="Retail">Retail / Ventas</option>
+                            <option value="Educación">Educación</option>
+                            <option value="Otro">Otro</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn-start btn-login">Ingresar <i class="fas fa-arrow-right"></i></button>
+                </form>
+            </div>
+        </section>
+
+        <!-- LAYOUT DE USUARIO LOGUEADO -->
+        <div id="logged-in-layout" class="hidden logged-in-layout">
+            <!-- SIDEBAR -->
+            <aside id="app-sidebar" class="app-sidebar">
+                <div class="sidebar-user">
+                    <div class="user-avatar"><i class="fas fa-user-astronaut"></i></div>
+                    <div class="user-info">
+                        <h4 id="sidebar-user-name">Usuario</h4>
+                        <p id="sidebar-user-sector">Sector</p>
+                    </div>
+                </div>
+                <nav class="sidebar-nav">
+                    <button class="nav-btn active"><i class="fas fa-folder-plus"></i> Nuevo Proyecto</button>
+                    <button class="nav-btn"><i class="fas fa-user"></i> Mi Perfil</button>
+                    <button class="nav-btn"><i class="fas fa-folder-open"></i> Mis Proyectos</button>
+                    <button class="nav-btn"><i class="fas fa-cog"></i> Configuración</button>
+                </nav>
+                <div class="sidebar-footer">
+                    <button id="btn-logout" class="nav-btn btn-logout"><i class="fas fa-sign-out-alt"></i> Cerrar Sesión</button>
+                </div>
+            </aside>
+
+            <!-- CONTENIDO PRINCIPAL -->
+            <div class="main-content">
+                <!-- SECCIÓN 1: BIENVENIDA / CARGA -->
+                <section id="welcome-section">
             <header class="brand">
                 <h1>Claytics</h1>
             </header>
@@ -33,6 +95,18 @@
                 <h3>¡Suelta tu archivo aquí!</h3>
                 <p>Excel, CSV o TXT. Nosotros hacemos el trabajo duro.</p>
                 <input type="file" id="file-input" class="hidden" accept=".csv, .xlsx, .xls, .txt">
+            </div>
+
+            <div class="external-connections">
+                <p class="connections-title">O importa tus datos directamente desde:</p>
+                <div class="connections-grid">
+                    <button class="btn-connect btn-drive" title="Conectar con Google Drive">
+                        <i class="fab fa-google-drive"></i> Google Drive
+                    </button>
+                    <button class="btn-connect btn-db" title="Conectar a Base de Datos SQL">
+                        <i class="fas fa-database"></i> Base de Datos
+                    </button>
+                </div>
             </div>
 
             <button class="btn-start hidden" id="start-btn">
@@ -304,6 +378,8 @@
                 </div>
             </div>
         </section>
+            </div> <!-- Cierre de .main-content -->
+        </div> <!-- Cierre de #logged-in-layout -->
     </main>
 
     <!-- ══════════════════════════════════════════════
@@ -407,6 +483,44 @@
                 <p class="sheet-subtitle">Este archivo Excel contiene varias hojas de trabajo. Elige la que deseas analizar:</p>
                 <div id="sheet-buttons-list" class="sheet-buttons-list">
                     <!-- Se puebla dinámicamente -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- BOTÓN DE FEEDBACK FLOTANTE -->
+    <button id="feedback-fab" class="feedback-fab">
+        <i class="fas fa-comment-dots"></i> ¿Algo por mejorar?
+    </button>
+
+    <!-- MODAL DE FEEDBACK -->
+    <div id="feedback-modal" class="clean-modal hidden">
+        <div class="clean-panel feedback-panel">
+            <div class="clean-header">
+                <div class="clean-header-left">
+                    <div class="clean-agent-icon"><i class="fas fa-lightbulb"></i></div>
+                    <div>
+                        <div class="clean-agent-name">Tu Opinión Importa</div>
+                        <h3 class="clean-title">Ayúdanos a mejorar</h3>
+                    </div>
+                </div>
+                <button class="clean-close-btn" id="feedback-close-btn">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="clean-step" style="padding-top: 20px;" id="feedback-step-input">
+                <p class="clean-subtitle">Escribe aquí cualquier sugerencia o problema que hayas tenido con Claytics.</p>
+                <textarea id="feedback-text" class="feedback-textarea" rows="5" placeholder="Me gustaría que la app..."></textarea>
+                <div class="clean-actions" style="margin-top: 15px;">
+                    <button id="feedback-submit-btn" class="btn-apply-clean" style="width: 100%;">Enviar Sugerencia</button>
+                </div>
+            </div>
+            <!-- Éxito Feedback -->
+            <div id="feedback-step-success" class="clean-step hidden" style="padding-top: 20px;">
+                <div class="clean-perfect">
+                    <i class="fas fa-heart" style="color: #F43F5E;"></i>
+                    <h3>¡Gracias!</h3>
+                    <p>Tu comentario ha sido guardado. Nos ayudará a ser mejores.</p>
                 </div>
             </div>
         </div>

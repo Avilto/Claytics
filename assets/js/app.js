@@ -1462,3 +1462,100 @@ function initExportListeners() {
     if (pdfBtn) pdfBtn.addEventListener("click", exportToPDF);
     if (txtBtn) txtBtn.addEventListener("click", exportToTXT);
 }
+
+// ═══════════════════════════════════════════════════════
+// LOGIN LOGIC
+// ═══════════════════════════════════════════════════════
+const loginForm = document.getElementById('login-form');
+const loginSection = document.getElementById('login-section');
+
+if (loginForm && loginSection) {
+    loginForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        
+        // Simular inicio de sesión guardando datos básicos en memoria (o localStorage)
+        const name = document.getElementById('login-name').value;
+        const age = document.getElementById('login-age').value;
+        const email = document.getElementById('login-email').value;
+        const sector = document.getElementById('login-sector').value;
+        
+        console.log(`User logged in: ${name}, ${age}, ${email}, ${sector}`);
+        
+        // Actualizar UI del Sidebar
+        const sidebarName = document.getElementById('sidebar-user-name');
+        const sidebarSector = document.getElementById('sidebar-user-sector');
+        if (sidebarName) sidebarName.textContent = name || 'Usuario';
+        if (sidebarSector) sidebarSector.textContent = sector || 'General';
+
+        // Ocultar login y mostrar layout principal
+        loginSection.classList.add('hidden');
+        const loggedInLayout = document.getElementById('logged-in-layout');
+        if (loggedInLayout) loggedInLayout.classList.remove('hidden');
+        welcomeSection.classList.remove('hidden');
+    });
+}
+
+// Botón de Cerrar Sesión
+const logoutBtn = document.getElementById('btn-logout');
+if (logoutBtn) {
+    logoutBtn.addEventListener('click', () => {
+        const loggedInLayout = document.getElementById('logged-in-layout');
+        if (loggedInLayout) loggedInLayout.classList.add('hidden');
+        if (loginSection) loginSection.classList.remove('hidden');
+    });
+}
+
+// ═══════════════════════════════════════════════════════
+// FEEDBACK LOGIC
+// ═══════════════════════════════════════════════════════
+const feedbackFab = document.getElementById('feedback-fab');
+const feedbackModal = document.getElementById('feedback-modal');
+const feedbackCloseBtn = document.getElementById('feedback-close-btn');
+const feedbackSubmitBtn = document.getElementById('feedback-submit-btn');
+const feedbackText = document.getElementById('feedback-text');
+const feedbackStepInput = document.getElementById('feedback-step-input');
+const feedbackStepSuccess = document.getElementById('feedback-step-success');
+
+if (feedbackFab && feedbackModal) {
+    // Abrir modal
+    feedbackFab.addEventListener('click', () => {
+        feedbackModal.classList.remove('hidden');
+        feedbackStepInput.classList.remove('hidden');
+        feedbackStepSuccess.classList.add('hidden');
+        feedbackText.value = ''; // limpiar anterior
+    });
+
+    // Cerrar modal con botón X
+    if (feedbackCloseBtn) {
+        feedbackCloseBtn.addEventListener('click', () => {
+            feedbackModal.classList.add('hidden');
+        });
+    }
+
+    // Cerrar clickeando fuera
+    feedbackModal.addEventListener('click', (e) => {
+        if (e.target === feedbackModal) {
+            feedbackModal.classList.add('hidden');
+        }
+    });
+
+    // Enviar feedback
+    if (feedbackSubmitBtn) {
+        feedbackSubmitBtn.addEventListener('click', () => {
+            const comment = feedbackText.value.trim();
+            if (comment === '') return;
+            
+            // Simular envío a backend
+            console.log("Feedback enviado:", comment);
+            
+            // Cambiar a vista de éxito
+            feedbackStepInput.classList.add('hidden');
+            feedbackStepSuccess.classList.remove('hidden');
+            
+            // Cerrar automáticamente después de 3 segundos
+            setTimeout(() => {
+                feedbackModal.classList.add('hidden');
+            }, 3000);
+        });
+    }
+}
