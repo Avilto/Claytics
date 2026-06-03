@@ -18,6 +18,36 @@ let currentKPIs = [];
 let currentWorkbook = null;      // Workbook actual de Excel (para cambiar de hoja)
 let currentSheetName = null;     // Nombre de la hoja activa
 
+const authSection = document.getElementById('auth-section');
+const projectsSection = document.getElementById('projects-section');
+const signupCard = document.getElementById('signup-card');
+const loginCard = document.getElementById('login-card');
+const signupNameInput = document.getElementById('signup-name');
+const signupEmailInput = document.getElementById('signup-email');
+const signupPasswordInput = document.getElementById('signup-password');
+const signupAgeInput = document.getElementById('signup-age');
+const signupIndustryInput = document.getElementById('signup-industry');
+const signupBtn = document.getElementById('signup-btn');
+const showLoginBtn = document.getElementById('show-login-btn');
+const showSignupBtn = document.getElementById('show-signup-btn');
+const loginEmailInput = document.getElementById('login-email');
+const loginBtn = document.getElementById('login-btn');
+const providerButtons = document.querySelectorAll('.btn-provider');
+const projectsList = document.getElementById('projects-list');
+const projectsEmpty = document.querySelector('.projects-empty');
+const btnNewProject = document.getElementById('btn-new-project');
+const btnCreateProjectEmpty = document.getElementById('btn-create-project-empty');
+const btnLogout = document.getElementById('btn-logout');
+const openProjectsBtn = document.getElementById('open-projects-btn');
+const projectUserName = document.getElementById('project-user-name');
+
+const STORAGE_USERS = 'claytics_users';
+const STORAGE_SESSION = 'claytics_session';
+const STORAGE_PROJECTS = 'claytics_projects';
+
+let currentUser = null;
+let currentProject = null;
+
 // 1. Gestión de Selección de Archivo
 if (dropZone && fileInput) {
     dropZone.addEventListener('click', () => {
@@ -39,6 +69,354 @@ function handleFileSelect(file) {
     startBtn.classList.remove('hidden');
     currentFileData = file;
 }
+
+function getStoredUsers() {
+    try {
+        const users = JSON.parse(localStorage.getItem(STORAGE_USERS) || '[]');
+        return Array.isArray(users) ? users : [];
+    } catch (e) {
+        return [];
+    }
+}
+
+function saveStoredUsers(users) {
+    localStorage.setItem(STORAGE_USERS, JSON.stringify(users));
+}
+
+function getStoredProjects() {
+    try {
+        const projects = JSON.parse(localStorage.getItem(STORAGE_PROJECTS) || '[]');
+        return Array.isArray(projects) ? projects : [];
+    } catch (e) {
+        return [];
+    }
+}
+
+function saveStoredProjects(projects) {
+    localStorage.setItem(STORAGE_PROJECTS, JSON.stringify(projects));
+}
+
+function setSessionUser(email) {
+    currentUser = getStoredUsers().find(u => u.email === email);
+    if (!currentUser) return;
+    localStorage.setItem(STORAGE_SESSION, JSON.stringify({ email, lastLogin: new Date().toISOString() }));
+}
+
+function clearSession() {
+    localStorage.removeItem(STORAGE_SESSION);
+    currentUser = null;
+    currentProject = null;
+}
+
+function loadProjectsForUser(email) {
+    return getStoredProjects().filter(p => p.owner === email).sort((a, b) => new Date(b.savedAt) - new Date(a.savedAt));
+}
+
+function saveProjectForUser(project) {
+    const projects = getStoredProjects();
+    const index = projects.findIndex(p => p.id === project.id);
+    if (index >= 0) {
+        projects[index] = project;
+    } else {
+        projects.push(project);
+    }
+    saveStoredProjects(projects);
+}
+
+function createProjectObject(overrides = {}) {
+    const name = overrides.name || `Proyecto ${new Date().toLocaleDateString()}`;
+    return {
+        id: overrides.id || `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        owner: currentUser ? currentUser.email : overrides.owner || '',
+        name,
+        fileName: overrides.fileName || currentFileName || 'Sin archivo',
+        savedAt: overrides.savedAt || new Date().toISOString(),
+        summary: overrides.summary || currentKPIs.map(kpi => ({ label: kpi.label, value: kpi.value })),
+    };
+}
+
+function getDisplayDate(dateString) {
+    try {
+        return new Intl.DateTimeFormat('es-PE', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(dateString));
+    } catch (e) {
+        return dateString;
+    }
+}
+
+function showSignupCard() {
+    if (authSection) authSection.classList.remove('hidden');
+    if (projectsSection) projectsSection.classList.add('hidden');
+    if (welcomeSection) welcomeSection.classList.add('hidden');
+    if (dashboardSection) dashboardSection.classList.add('hidden');
+    if (loginCard) loginCard.classList.add('hidden');
+    if (signupCard) signupCard.classList.remove('hidden');
+}
+
+function showLoginCard() {
+    if (authSection) authSection.classList.remove('hidden');
+    if (projectsSection) projectsSection.classList.add('hidden');
+    if (welcomeSection) welcomeSection.classList.add('hidden');
+    if (dashboardSection) dashboardSection.classList.add('hidden');
+    if (signupCard) signupCard.classList.add('hidden');
+    if (loginCard) loginCard.classList.remove('hidden');
+}
+
+function showProjectsSection() {
+    if (authSection) authSection.classList.add('hidden');
+    if (projectsSection) projectsSection.classList.remove('hidden');
+    if (welcomeSection) welcomeSection.classList.add('hidden');
+    if (moldingSection) moldingSection.classList.add('hidden');
+    if (dashboardSection) dashboardSection.classList.add('hidden');
+
+    if (projectUserName && currentUser) {
+        projectUserName.textContent = currentUser.name || currentUser.email;
+    }
+    renderProjectsList();
+}
+
+function showWelcomeForNewProject() {
+    if (authSection) authSection.classList.add('hidden');
+    if (projectsSection) projectsSection.classList.add('hidden');
+    if (welcomeSection) welcomeSection.classList.remove('hidden');
+    if (dashboardSection) dashboardSection.classList.add('hidden');
+    if (moldingSection) moldingSection.classList.add('hidden');
+}
+
+function renderProjectsList() {
+    if (!projectsList || !currentUser) return;
+
+    const projects = loadProjectsForUser(currentUser.email);
+    projectsList.innerHTML = '';
+
+    if (!projects.length) {
+        if (projectsEmpty) projectsEmpty.classList.remove('hidden');
+        return;
+    }
+
+    if (projectsEmpty) projectsEmpty.classList.add('hidden');
+
+    projects.forEach(project => {
+        const card = document.createElement('div');
+        card.className = 'project-card';
+
+        const title = document.createElement('h3');
+        title.textContent = project.name;
+        card.appendChild(title);
+
+        const description = document.createElement('p');
+        description.textContent = `Archivo: ${project.fileName}`;
+        card.appendChild(description);
+
+        const meta = document.createElement('div');
+        meta.className = 'project-meta';
+        meta.innerHTML = `
+            <span><i class="fas fa-calendar-alt"></i> ${getDisplayDate(project.savedAt)}</span>
+            <span><i class="fas fa-user-check"></i> ${project.owner}</span>
+        `;
+        card.appendChild(meta);
+
+        if (project.summary && project.summary.length) {
+            const summaryList = document.createElement('div');
+            summaryList.style.marginTop = '14px';
+            summaryList.style.display = 'grid';
+            summaryList.style.gridTemplateColumns = 'repeat(auto-fit, minmax(150px, 1fr))';
+            summaryList.style.gap = '10px';
+            project.summary.slice(0, 4).forEach(item => {
+                const itemEl = document.createElement('span');
+                itemEl.textContent = `${item.label}: ${item.value}`;
+                itemEl.style.background = '#F8FAFC';
+                itemEl.style.borderRadius = '999px';
+                itemEl.style.padding = '8px 12px';
+                itemEl.style.fontSize = '0.88rem';
+                summaryList.appendChild(itemEl);
+            });
+            card.appendChild(summaryList);
+        }
+
+        const openButton = document.createElement('button');
+        openButton.className = 'btn-clean';
+        openButton.innerHTML = '<i class="fas fa-arrow-right"></i> Abrir proyecto';
+        openButton.addEventListener('click', () => {
+            currentProject = project;
+            currentFileName = project.fileName || currentFileName;
+            showWelcomeForNewProject();
+            alert(`Proyecto "${project.name}" cargado. Puedes subir un nuevo archivo o seguir guardando tus avances.`);
+        });
+        card.appendChild(openButton);
+
+        projectsList.appendChild(card);
+    });
+}
+
+function initializeAuth() {
+    const users = getStoredUsers();
+    const session = localStorage.getItem(STORAGE_SESSION);
+
+    if (session) {
+        try {
+            const sessionData = JSON.parse(session);
+            const user = users.find(u => u.email === sessionData.email);
+            if (user) {
+                currentUser = user;
+                showProjectsSection();
+                return;
+            }
+        } catch (e) {
+            clearSession();
+        }
+    }
+
+    if (users.length > 0) {
+        showLoginCard();
+    } else {
+        showSignupCard();
+    }
+}
+
+function handleProviderButtonClick(event) {
+    const provider = event.currentTarget.dataset.provider;
+    if (!provider) return;
+    const email = provider === 'hotmail' ? 'usuario@hotmail.com' : 'usuario@gmail.com';
+    loginEmailInput.value = email;
+    if (getStoredUsers().some(u => u.email === email)) {
+        loginBtn.click();
+    } else {
+        signupEmailInput.value = email;
+        showSignupCard();
+    }
+}
+
+signupBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    const name = signupNameInput?.value.trim();
+    const email = signupEmailInput?.value.trim().toLowerCase();
+    const password = signupPasswordInput?.value.trim();
+    const age = signupAgeInput?.value.trim();
+    const industry = signupIndustryInput?.value.trim();
+
+    if (!name || !email || !password || !age || !industry) {
+        alert('Completa tu nombre, correo, contraseña, edad e industria para crear la cuenta.');
+        return;
+    }
+
+    const users = getStoredUsers();
+    if (users.some(u => u.email === email)) {
+        alert('Este correo ya está registrado. Por favor inicia sesión.');
+        showLoginCard();
+        return;
+    }
+
+    const newUser = { name, email, password, age, industry, createdAt: new Date().toISOString() };
+    saveStoredUsers([...users, newUser]);
+    setSessionUser(email);
+
+    currentProject = createProjectObject();
+    saveProjectForUser(currentProject);
+    alert('Cuenta creada y proyecto guardado. Bienvenido a Mis proyectos.');
+    showProjectsSection();
+});
+
+showLoginBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    showLoginCard();
+});
+
+showSignupBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    showSignupCard();
+});
+
+loginBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    const email = loginEmailInput?.value.trim().toLowerCase();
+    if (!email) {
+        alert('Ingresa tu correo para iniciar sesión.');
+        return;
+    }
+    const users = getStoredUsers();
+    const user = users.find(u => u.email === email);
+    if (!user) {
+        alert('No se encontró una cuenta con ese correo. Crea una cuenta primero.');
+        showSignupCard();
+        if (signupEmailInput) signupEmailInput.value = email;
+        return;
+    }
+    setSessionUser(email);
+    alert(`Bienvenido de nuevo, ${user.name || user.email}`);
+    showProjectsSection();
+});
+
+providerButtons?.forEach(button => button.addEventListener('click', handleProviderButtonClick));
+
+btnNewProject?.addEventListener('click', (e) => {
+    e.preventDefault();
+    showWelcomeForNewProject();
+});
+
+btnCreateProjectEmpty?.addEventListener('click', (e) => {
+    e.preventDefault();
+    showWelcomeForNewProject();
+});
+
+btnLogout?.addEventListener('click', (e) => {
+    e.preventDefault();
+    clearSession();
+    if (getStoredUsers().length > 0) {
+        showLoginCard();
+    } else {
+        showSignupCard();
+    }
+});
+
+openProjectsBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    if (!currentUser) {
+        showLoginCard();
+    } else {
+        showProjectsSection();
+    }
+});
+
+function ensureCurrentUser() {
+    if (!currentUser) {
+        const session = localStorage.getItem(STORAGE_SESSION);
+        if (session) {
+            try {
+                const sessionData = JSON.parse(session);
+                currentUser = getStoredUsers().find(u => u.email === sessionData.email) || null;
+            } catch (e) {
+                currentUser = null;
+            }
+        }
+    }
+    return Boolean(currentUser);
+}
+
+function saveCurrentProjectProgress() {
+    if (!ensureCurrentUser()) {
+        alert('Inicia sesión para guardar tu progreso.');
+        return;
+    }
+    const name = currentProject?.name || signupProjectInput?.value.trim() || prompt('Nombre de proyecto para guardar:', `Proyecto ${new Date().toLocaleDateString()}`);
+    if (!name) return;
+    const savedProject = createProjectObject({
+        id: currentProject?.id,
+        name,
+        fileName: currentFileName || 'Sin archivo',
+        summary: currentKPIs.map(kpi => ({ label: kpi.label, value: kpi.value })),
+    });
+    saveProjectForUser(savedProject);
+    currentProject = savedProject;
+    alert('Progreso guardado en tu cuenta. Revisa Mis proyectos.');
+}
+
+const saveProjectBtn = document.getElementById('save-project-btn');
+saveProjectBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    saveCurrentProjectProgress();
+});
+
+initializeAuth();
 
 // 2. Flujo Principal (Procesamiento y Coordinación de Agentes)
 startBtn.addEventListener('click', async () => {

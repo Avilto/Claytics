@@ -22,6 +22,117 @@
     </div>
 
     <main class="app-container" id="main-app">
+        <!-- SECCIÓN DE AUTENTICACIÓN / MIS PROYECTOS -->
+        <section id="auth-section">
+            <header class="brand">
+                <h1>Claytics</h1>
+                <p class="tagline">Guarda tu progreso en tu cuenta, nombra tus proyectos y accede con tu correo.</p>
+            </header>
+
+            <div class="auth-grid">
+                <div class="auth-card" id="signup-card">
+                    <h2>Crear cuenta</h2>
+                    <p>Guarda tu progreso, nombra tu proyecto y accede luego desde Mis proyectos.</p>
+
+                    <div class="form-group">
+                        <label for="signup-name">Nombre completo</label>
+                        <input type="text" id="signup-name" placeholder="Ej. Ana Torres">
+                    </div>
+                    <div class="form-group">
+                        <label for="signup-email">Correo electrónico</label>
+                        <input type="email" id="signup-email" placeholder="tucorreo@gmail.com">
+                    </div>
+                    <div class="form-group">
+                        <label for="signup-password">Contraseña</label>
+                        <input type="password" id="signup-password" placeholder="Escribe una contraseña segura">
+                    </div>
+                    <div class="form-group">
+                        <label for="signup-age">Edad</label>
+                        <input type="number" id="signup-age" placeholder="Ej. 28" min="13" max="120">
+                    </div>
+                    <div class="form-group">
+                        <label for="signup-industry">Industria</label>
+                        <select id="signup-industry">
+                            <option value="">Selecciona una industria</option>
+                            <option value="Tecnología">Tecnología</option>
+                            <option value="Salud">Salud</option>
+                            <option value="Finanzas">Finanzas</option>
+                            <option value="Retail / Ventas">Retail / Ventas</option>
+                            <option value="Educación">Educación</option>
+                            <option value="Manufactura">Manufactura</option>
+                            <option value="Energía">Energía</option>
+                            <option value="Servicios">Servicios</option>
+                            <option value="Telecomunicaciones">Telecomunicaciones</option>
+                            <option value="Otro">Otro</option>
+                        </select>
+                    </div>
+
+                    <button class="btn-start" id="signup-btn">Guardar cuenta</button>
+
+                    <div class="email-login-note">
+                        <p>También puedes iniciar sesión con:</p>
+                        <div class="provider-buttons">
+                            <button class="btn-provider" data-provider="gmail">Gmail</button>
+                            <button class="btn-provider" data-provider="hotmail">Hotmail</button>
+                        </div>
+                    </div>
+
+                    <div class="auth-switch">
+                        <span>¿Ya tienes cuenta?</span>
+                        <button class="btn-clean" id="show-login-btn">Iniciar sesión</button>
+                    </div>
+                </div>
+
+                <div class="auth-card hidden" id="login-card">
+                    <h2>Iniciar sesión</h2>
+                    <p>Ingresa con tu correo y continúa sin formulario completo.</p>
+
+                    <div class="form-group">
+                        <label for="login-email">Correo electrónico</label>
+                        <input type="email" id="login-email" placeholder="usuario@gmail.com">
+                    </div>
+
+                    <button class="btn-start" id="login-btn">Entrar</button>
+
+                    <div class="email-login-note">
+                        <p>O usa alguno de estos correos rápidos:</p>
+                        <div class="provider-buttons">
+                            <button class="btn-provider" data-provider="gmail">Gmail</button>
+                            <button class="btn-provider" data-provider="hotmail">Hotmail</button>
+                        </div>
+                    </div>
+
+                    <div class="auth-switch">
+                        <span>¿No tienes cuenta?</span>
+                        <button class="btn-clean" id="show-signup-btn">Crear cuenta</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="auth-legal">
+                <p>Tu sesión y proyectos se guardan localmente. Después podrás verlos en Mis proyectos.</p>
+            </div>
+        </section>
+
+        <section id="projects-section" class="hidden">
+            <div class="projects-header">
+                <div>
+                    <h2>Mis proyectos</h2>
+                    <p id="projects-user-label">Bienvenido, <strong id="project-user-name"></strong></p>
+                </div>
+                <div class="projects-actions">
+                    <button class="btn-start" id="btn-new-project"><i class="fas fa-plus"></i> Nuevo proyecto</button>
+                    <button class="btn-clean" id="btn-logout"><i class="fas fa-right-from-bracket"></i> Cerrar sesión</button>
+                </div>
+            </div>
+
+            <div id="projects-list" class="projects-list"></div>
+            <div class="projects-empty hidden">
+                <p>No tienes proyectos guardados todavía.</p>
+                <button class="btn-start" id="btn-create-project-empty">Crear mi primer proyecto</button>
+            </div>
+        </section>
+
         <!-- SECCIÓN 1: BIENVENIDA / CARGA -->
         <section id="welcome-section">
             <header class="brand">
@@ -54,6 +165,12 @@
                 <div class="dashboard-header-actions">
                     <button class="btn-change-file" id="change-file-btn">
                         <i class="fas fa-folder-open"></i> Cambiar Archivo
+                    </button>
+                    <button class="btn-clean" id="open-projects-btn">
+                        <i class="fas fa-folder-closed"></i> Mis proyectos
+                    </button>
+                    <button class="btn-save-project" id="save-project-btn">
+                        <i class="fas fa-save"></i> Guardar Proyecto
                     </button>
                     <input type="file" id="change-file-input" class="hidden" accept=".csv, .xlsx, .xls, .txt">
                 </div>
