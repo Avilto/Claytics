@@ -18,6 +18,10 @@ let currentKPIs = [];
 let currentWorkbook = null;      // Workbook actual de Excel (para cambiar de hoja)
 let currentSheetName = null;     // Nombre de la hoja activa
 
+let userCharts = [];
+let chartCounter = 0;
+let activeChartFilter = null;
+
 // 1. Gestión de Selección de Archivo
 if (dropZone && fileInput) {
     dropZone.addEventListener('click', () => {
@@ -173,6 +177,9 @@ async function processData(rawData) {
         filtersInitialized = false;
         activeHiddenColumns = [];
         activeRowRule = { column: '', condition: 'none', value: '' };
+        if (kpiAgent) {
+            kpiAgent.manualColumnTypes = {};
+        }
 
         // Retraso para simular análisis y moldear con animación
         await new Promise(resolve => setTimeout(resolve, 2000));
@@ -285,7 +292,7 @@ function updateSheetBar() {
 
 function renderDashboard(data) {
     kpiContainer.innerHTML = '';
-    insightsContainer.innerHTML = '';
+    if (insightsContainer) insightsContainer.innerHTML = '';
 
     // Renderizar KPIs generados por el Agente
     currentKPIs.forEach(kpi => {
@@ -294,13 +301,22 @@ function renderDashboard(data) {
 
     // Insight único: nombres de columnas del dataset
     const columns = Object.keys(data[0]);
-    renderColumnsInsight(columns, insightsContainer);
+    if (insightsContainer) renderColumnsInsight(columns, insightsContainer);
 
     // Renderizar tabla de datos
     renderDataTable(data);
 
+    // Mostrar y popular Constructor de Gráficos
+    initChartBuilder(data);
+
+    // Renderizar Gráficas
+    renderAllUserCharts();
+
     // Actualizar barra de hoja activa
     updateSheetBar();
+
+    // Recalcular KPIs personalizados con la nueva data
+    if (typeof refreshCustomKpiValues === 'function') refreshCustomKpiValues();
 }
 
 let cachedRawData = null;
@@ -332,29 +348,180 @@ let filtersInitialized = false;
 function renderColumnsInsight(columns, container) {
     const card = document.createElement('div');
     card.className = 'insight-card';
-    
+
+    // --- Badges estáticos por columna ---
+    const TYPE_META = {
+        'Numeric':     { label: 'Número',   cls: 'type-number',  icon: 'fa-hashtag' },
+        'Categorical': { label: 'Texto',    cls: 'type-text',    icon: 'fa-font' },
+        'Date':        { label: 'Fecha',    cls: 'type-date',    icon: 'fa-calendar-alt' },
+        'Boolean':     { label: 'Booleano', cls: 'type-boolean', icon: 'fa-toggle-on' },
+        'ID':          { label: 'ID',       cls: 'type-id',      icon: 'fa-fingerprint' },
+    };
+
     const tags = columns.map(col => {
         const colType = kpiAgent.columnTypes[col] || 'Categorical';
-        let typeLabel = "Texto";
-        let typeClass = "type-text";
-        if (colType === 'Numeric') { typeLabel = "Número"; typeClass = "type-number"; }
-        if (colType === 'ID') { typeLabel = "ID"; typeClass = "type-id"; }
-        if (colType === 'Date') { typeLabel = "Fecha"; typeClass = "type-date"; }
-        if (colType === 'Boolean') { typeLabel = "Booleano"; typeClass = "type-boolean"; }
-        
+        const meta = TYPE_META[colType] || TYPE_META['Categorical'];
         return `
             <div class="col-type-tag">
                 <span class="col-name">${col}</span>
-                <span class="col-type-badge ${typeClass}">${typeLabel}</span>
-            </div>
-        `;
+                <span class="col-type-badge ${meta.cls}">
+                    <i class="fas ${meta.icon}"></i> ${meta.label}
+                </span>
+            </div>`;
+    }).join('');
+
+    // --- Panel único de cambio de tipo ---
+    const columnOptions = columns.map(col => {
+        const ct = kpiAgent.columnTypes[col] || 'Categorical';
+        const m  = TYPE_META[ct] || TYPE_META['Categorical'];
+        return `<option value="${col}" data-current="${ct}">${col} (${m.label})</option>`;
     }).join('');
 
     card.innerHTML = `
         <h4><i class="fas fa-table-columns" style="color:var(--p-primary)"></i> Columnas y Tipos Detectados</h4>
         <div class="col-type-tags-wrap">${tags}</div>
+
+        <div class="type-changer-panel">
+            <div class="type-changer-header">
+                <i class="fas fa-exchange-alt"></i>
+                <span>Cambiar tipo de dato</span>
+            </div>
+            <div class="type-changer-row">
+                <div class="type-changer-field">
+                    <label class="type-changer-label">Columna</label>
+                    <div class="type-changer-select-wrap">
+                        <select id="tc-col-select" class="type-changer-select">
+                            ${columnOptions}
+                        </select>
+                    </div>
+                </div>
+                <div class="type-changer-arrow"><i class="fas fa-arrow-right"></i></div>
+                <div class="type-changer-field">
+                    <label class="type-changer-label">Nuevo tipo</label>
+                    <div class="type-changer-select-wrap">
+                        <select id="tc-type-select" class="type-changer-select"></select>
+                    </div>
+                </div>
+                <button id="tc-apply-btn" class="type-changer-btn">
+                    <i class="fas fa-check"></i> Aplicar
+                </button>
+            </div>
+        </div>
     `;
     container.appendChild(card);
+
+    // --- Lógica del panel ---
+    const colSelect  = card.querySelector('#tc-col-select');
+    const typeSelect = card.querySelector('#tc-type-select');
+    const applyBtn   = card.querySelector('#tc-apply-btn');
+
+
+    const TYPE_OPTIONS = [
+        { value: 'Numeric',     label: 'Número',    icon: 'fa-hashtag' },
+        { value: 'Categorical', label: 'Texto',     icon: 'fa-font' },
+        { value: 'Date',        label: 'Fecha',     icon: 'fa-calendar-alt' },
+        { value: 'Boolean',     label: 'Booleano',  icon: 'fa-toggle-on' },
+        { value: 'ID',          label: 'ID',        icon: 'fa-fingerprint' },
+    ];
+
+    // Sugerencias inteligentes según tipo actual
+    const SMART_SUGGESTIONS = {
+        'Numeric':     ['Categorical', 'Boolean', 'ID'],
+        'Categorical': ['Numeric', 'Date', 'Boolean', 'ID'],
+        'Date':        ['Categorical', 'Numeric'],
+        'Boolean':     ['Numeric', 'Categorical'],
+        'ID':          ['Categorical', 'Numeric'],
+    };
+
+    function populateTypeOptions(currentType) {
+        const suggestions = SMART_SUGGESTIONS[currentType] || [];
+        typeSelect.innerHTML = TYPE_OPTIONS
+            .filter(t => t.value !== currentType)
+            .map(t => {
+                const isSuggested = suggestions.includes(t.value);
+                return `<option value="${t.value}" ${isSuggested ? 'data-suggested="true"' : ''}>
+                    ${isSuggested ? '⭐ ' : ''}${t.label}
+                </option>`;
+            }).join('');
+        // Seleccionar la primera sugerencia por defecto
+        const firstSuggested = typeSelect.querySelector('[data-suggested="true"]');
+        if (firstSuggested) firstSuggested.selected = true;
+    }
+
+    colSelect.addEventListener('change', () => {
+        const currentType = colSelect.selectedOptions[0]?.dataset.current || 'Categorical';
+        populateTypeOptions(currentType);
+    });
+
+    applyBtn.addEventListener('click', () => {
+        const col     = colSelect.value;
+        const newType = typeSelect.value;
+        if (!col || !newType) return;
+
+        applyBtn.classList.add('applying');
+        applyBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Aplicando…';
+        setTimeout(() => {
+            changeColumnDataType(col, newType);
+            applyBtn.classList.remove('applying');
+            applyBtn.innerHTML = '<i class="fas fa-check"></i> Aplicar';
+        }, 200);
+    });
+
+    // Inicializar con la primera columna seleccionada
+    if (columns.length > 0) {
+        const initType = kpiAgent.columnTypes[columns[0]] || 'Categorical';
+        populateTypeOptions(initType);
+    }
+}
+
+/**
+ * Cambia el tipo de dato de una columna, convierte los valores de forma inteligente,
+ * persiste el tipo manual en el agente y refresca el Dashboard y el Lab de Análisis.
+ */
+function changeColumnDataType(col, newType) {
+    if (!cachedRawData || cachedRawData.length === 0) return;
+
+    // 1. Persistir el tipo manual en el agente para que sobreviva re-análisis
+    kpiAgent.manualColumnTypes[col] = newType;
+    kpiAgent.columnTypes[col] = newType;
+
+    // 2. Convertir la data real de forma inteligente
+    cachedRawData.forEach(row => {
+        let val = row[col];
+        if (val === null || val === undefined || val === '') {
+            row[col] = null;
+            return;
+        }
+
+        if (newType === 'Numeric') {
+            // Limpiar moneda (S/, $, €, etc.), espacios y comas de miles
+            let cleanVal = String(val).replace(/[^\d.\-]/g, '');
+            let parsed = parseFloat(cleanVal);
+            row[col] = isNaN(parsed) ? 0 : parsed;
+        }
+        else if (newType === 'Categorical') {
+            row[col] = String(val).trim();
+        }
+        else if (newType === 'Boolean') {
+            const strVal = String(val).toLowerCase().trim();
+            row[col] = !['false', '0', '', 'no', 'falso', 'null', 'undefined'].includes(strVal);
+        }
+        else if (newType === 'Date') {
+            let date = new Date(val);
+            if (!isNaN(date.getTime())) {
+                row[col] = date.toISOString().split('T')[0];
+            } else {
+                row[col] = String(val).trim();
+            }
+        }
+        else if (newType === 'ID') {
+            row[col] = String(val).trim();
+        }
+    });
+
+    // 3. Recalcular KPIs y refrescar el Dashboard completo
+    currentKPIs = kpiAgent.analyze(cachedRawData);
+    renderDashboard(cachedRawData);
 }
 
 /**
@@ -1043,6 +1210,23 @@ function initFilterPanel(data) {
         rowColSelect.appendChild(opt);
     });
 
+    // Poblar selectores de Columna Calculada (solo numéricas)
+    const calcColA = document.getElementById('calc-col-a');
+    const calcColB = document.getElementById('calc-col-b');
+    if (calcColA && calcColB) {
+        calcColA.innerHTML = '<option value="">-- Seleccionar Columna --</option>';
+        calcColB.innerHTML = '<option value="">-- Seleccionar Columna --</option>';
+        columns.forEach(col => {
+            if (kpiAgent.columnTypes[col] === 'Numeric') {
+                calcColA.innerHTML += `<option value="${col}">${col}</option>`;
+                calcColB.innerHTML += `<option value="${col}">${col}</option>`;
+            }
+        });
+    }
+
+    // Inicializar lógica del panel de calculadora si no se ha hecho
+    initCalcPanel();
+
     // Panel colapsable - Filtros
     const toggleBtn = document.getElementById('filter-toggle-btn');
     const body = document.getElementById('filter-panel-body');
@@ -1454,11 +1638,581 @@ function exportToPDF() {
 function initExportListeners() {
     const excelBtn = document.getElementById("export-excel-btn");
     const csvBtn = document.getElementById("export-csv-btn");
-    const pdfBtn = document.getElementById("export-pdf-btn");
+    const pdfSimpleBtn = document.getElementById("export-pdf-simple-btn");
+    const pdfFullBtn = document.getElementById("export-pdf-full-btn");
     const txtBtn = document.getElementById("export-txt-btn");
     
     if (excelBtn) excelBtn.addEventListener("click", exportToExcel);
     if (csvBtn) csvBtn.addEventListener("click", exportToCSV);
-    if (pdfBtn) pdfBtn.addEventListener("click", exportToPDF);
+    if (pdfSimpleBtn) pdfSimpleBtn.addEventListener("click", exportToPDF);
+    if (pdfFullBtn) pdfFullBtn.addEventListener("click", exportToFullPDF);
     if (txtBtn) txtBtn.addEventListener("click", exportToTXT);
+}
+
+// ═══════════════════════════════════════════════════════
+//  NUEVAS FUNCIONES: GRÁFICAS, COLUMNA CALCULADA, REPORTE PDF
+// ═══════════════════════════════════════════════════════
+
+let builderInitialized = false;
+
+function initChartBuilder(data) {
+    const builderSection = document.getElementById('chart-builder-section');
+    if (!builderSection) return;
+    builderSection.classList.remove('hidden');
+
+    if (builderInitialized) return;
+    builderInitialized = true;
+
+    const colXSelect = document.getElementById('builder-col-x');
+    const colYSelect = document.getElementById('builder-col-y');
+    const columns = Object.keys(data[0] || {});
+
+    colXSelect.innerHTML = '<option value="">-- Seleccionar X --</option>';
+    colYSelect.innerHTML = '<option value="">-- Seleccionar Y --</option>';
+
+    columns.forEach(col => {
+        if (kpiAgent.columnTypes[col] === 'Categorical' || kpiAgent.columnTypes[col] === 'Date' || kpiAgent.columnTypes[col] === 'Boolean') {
+            colXSelect.innerHTML += `<option value="${col}">${col}</option>`;
+        }
+        if (kpiAgent.columnTypes[col] === 'Numeric') {
+            colYSelect.innerHTML += `<option value="${col}">${col}</option>`;
+        }
+    });
+
+    // Añadir gráfico por defecto si no hay ninguno
+    if (userCharts.length === 0) {
+        let defaultCat = null;
+        let defaultNum = null;
+        for (let col of columns) {
+            if (!defaultCat && (kpiAgent.columnTypes[col] === 'Categorical' || kpiAgent.columnTypes[col] === 'Date')) defaultCat = col;
+            if (!defaultNum && kpiAgent.columnTypes[col] === 'Numeric') defaultNum = col;
+            if (defaultCat && defaultNum) break;
+        }
+        if (defaultCat && defaultNum) {
+            addChartConfig('bar', defaultCat, defaultNum);
+            addChartConfig('doughnut', defaultCat, defaultNum);
+        }
+    }
+
+    document.getElementById('btn-add-chart').addEventListener('click', () => {
+        const type = document.getElementById('builder-type').value;
+        const colX = document.getElementById('builder-col-x').value;
+        const colY = document.getElementById('builder-col-y').value;
+
+        if (!colX || !colY) {
+            alert('Por favor, selecciona las columnas para el Eje X y el Eje Y.');
+            return;
+        }
+
+        addChartConfig(type, colX, colY);
+        renderAllUserCharts();
+    });
+
+    document.getElementById('btn-clear-chart-filter').addEventListener('click', () => {
+        activeChartFilter = null;
+        document.getElementById('active-chart-filter-badge').classList.add('hidden');
+        renderAllUserCharts(); 
+    });
+}
+
+function addChartConfig(type, colX, colY) {
+    chartCounter++;
+    userCharts.push({
+        id: `custom-chart-${chartCounter}`,
+        type: type,
+        colX: colX,
+        colY: colY,
+        instance: null
+    });
+}
+
+// Hacer removeChartConfig global para que el onClick del HTML funcione
+window.removeChartConfig = function(id) {
+    userCharts = userCharts.filter(c => c.id !== id);
+    renderAllUserCharts();
+};
+
+function handleChartClick(event, elements, chart, chartConfig) {
+    if (!elements || elements.length === 0) return;
+    
+    const elementIndex = elements[0].index;
+    const label = chart.data.labels[elementIndex];
+    
+    // Establecer el filtro global interactivo
+    activeChartFilter = { col: chartConfig.colX, val: label };
+    
+    // Mostrar Badge
+    const badge = document.getElementById('active-chart-filter-badge');
+    const badgeText = document.getElementById('active-filter-text');
+    badgeText.textContent = `${chartConfig.colX} = ${label}`;
+    badge.classList.remove('hidden');
+
+    // Re-renderizar todo el dashboard basado en este filtro
+    renderAllUserCharts();
+}
+
+function getActiveChartData() {
+    let data = cachedRawData;
+    if (activeChartFilter) {
+        data = data.filter(row => String(row[activeChartFilter.col]).trim() === String(activeChartFilter.val).trim());
+    }
+    return data;
+}
+
+function renderAllUserCharts() {
+    const container = document.getElementById('charts-container');
+    if (!container) return;
+    
+    if (userCharts.length === 0) {
+        container.classList.add('hidden');
+        return;
+    }
+    container.classList.remove('hidden');
+
+    // Obtener data (filtrada o completa)
+    const currentData = getActiveChartData();
+
+    // Actualizar KPIs si se están viendo gráficos filtrados
+    const kpisToRender = kpiAgent.analyze(currentData);
+    const kpiContainer = document.getElementById('kpi-container');
+    if (kpiContainer) {
+        kpiContainer.innerHTML = kpisToRender.map(kpi => `
+            <div class="kpi-card">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span class="label">${kpi.label}</span>
+                    <i class="fas ${kpi.icon}"></i>
+                </div>
+                <span class="value">${kpi.value}</span>
+                ${activeChartFilter ? `<span style="font-size: 0.7rem; color: #EF4444;">Filtrado por: ${activeChartFilter.val}</span>` : ''}
+            </div>
+        `).join('');
+    }
+
+    // Limpiar el contenedor de HTML
+    container.innerHTML = '';
+
+    const bgColors = [
+        '#4F46E5', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', 
+        '#06B6D4', '#EC4899', '#14B8A6', '#F97316', '#6366F1',
+        '#3B82F6', '#84CC16', '#F43F5E', '#A855F7', '#14B8A6'
+    ];
+    const bgColorSingle = 'rgba(79, 70, 229, 0.8)';
+
+    userCharts.forEach(chartConfig => {
+        // 1. Agregar el HTML del Canvas
+        const card = document.createElement('div');
+        card.className = 'chart-card';
+        card.innerHTML = `
+            <button class="btn-remove-chart" onclick="removeChartConfig('${chartConfig.id}')" title="Eliminar gráfico"><i class="fas fa-trash"></i></button>
+            <div style="width: 100%; height: 300px;"><canvas id="${chartConfig.id}"></canvas></div>
+        `;
+        container.appendChild(card);
+
+        // 2. Procesar Data
+        const aggregated = {};
+        currentData.forEach(row => {
+            let key = row[chartConfig.colX];
+            let val = parseFloat(row[chartConfig.colY]);
+            if (key !== undefined && key !== null && !isNaN(val)) {
+                key = String(key).trim();
+                if (key.length > 25) key = key.substring(0, 25) + '...';
+                aggregated[key] = (aggregated[key] || 0) + val;
+            }
+        });
+
+        const sortedData = Object.entries(aggregated).sort((a, b) => b[1] - a[1]);
+        const maxItems = (chartConfig.type === 'pie' || chartConfig.type === 'doughnut' || chartConfig.type === 'polarArea') ? 10 : 15;
+        const slicedData = sortedData.slice(0, maxItems);
+            
+        const labels = slicedData.map(d => d[0]);
+        const values = slicedData.map(d => d[1]);
+
+        // 3. Crear Configuración de Chart.js
+        const ctx = document.getElementById(chartConfig.id).getContext('2d');
+        
+        let datasets = [];
+        if (chartConfig.type === 'bar' || chartConfig.type === 'line') {
+            datasets = [{
+                label: `Total ${chartConfig.colY}`,
+                data: values,
+                backgroundColor: chartConfig.type === 'bar' ? bgColorSingle : 'rgba(79, 70, 229, 0.2)',
+                borderColor: '#4F46E5',
+                borderWidth: chartConfig.type === 'line' ? 2 : 0,
+                borderRadius: chartConfig.type === 'bar' ? 4 : 0,
+                fill: chartConfig.type === 'line'
+            }];
+        } else {
+            datasets = [{
+                data: values,
+                backgroundColor: bgColors.slice(0, values.length)
+            }];
+        }
+
+        const newChart = new Chart(ctx, {
+            type: chartConfig.type,
+            data: { labels: labels, datasets: datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                onClick: (event, elements, chart) => handleChartClick(event, elements, chart, chartConfig),
+                plugins: {
+                    legend: { 
+                        display: (chartConfig.type !== 'bar' && chartConfig.type !== 'line'),
+                        position: 'right'
+                    },
+                    title: { 
+                        display: true, 
+                        text: `${chartConfig.colY} por ${chartConfig.colX}`, 
+                        font: { size: 14 } 
+                    }
+                }
+            }
+        });
+
+        chartConfig.instance = newChart;
+    });
+}
+
+let calcPanelInitialized = false;
+
+function initCalcPanel() {
+    if (calcPanelInitialized) return;
+    calcPanelInitialized = true;
+    
+    const toggleBtn = document.getElementById('calc-toggle-btn');
+    const body = document.getElementById('calc-panel-body');
+    const icon = document.getElementById('calc-toggle-icon');
+    
+    if (toggleBtn && body && icon) {
+        toggleBtn.onclick = () => {
+            body.classList.toggle('hidden');
+            toggleBtn.classList.toggle('active');
+            if (body.classList.contains('hidden')) {
+                icon.className = 'fas fa-chevron-down toggle-icon';
+            } else {
+                icon.className = 'fas fa-chevron-up toggle-icon';
+            }
+        };
+    }
+
+    const btnCreateCol = document.getElementById('btn-create-col');
+    if (btnCreateCol) {
+        btnCreateCol.addEventListener('click', () => {
+            const newName = document.getElementById('calc-new-name').value.trim();
+            const colA = document.getElementById('calc-col-a').value;
+            const operator = document.getElementById('calc-operator').value;
+            const colB = document.getElementById('calc-col-b').value;
+            const errorMsg = document.getElementById('calc-error-msg');
+            
+            if (!newName || !colA || !colB) {
+                errorMsg.classList.remove('hidden');
+                return;
+            }
+            errorMsg.classList.add('hidden');
+
+            // Calcular en cachedRawData
+            cachedRawData.forEach(row => {
+                const valA = parseFloat(row[colA]);
+                const valB = parseFloat(row[colB]);
+                let result = null;
+                
+                if (!isNaN(valA) && !isNaN(valB)) {
+                    if (operator === '+') result = valA + valB;
+                    else if (operator === '-') result = valA - valB;
+                    else if (operator === '*') result = valA * valB;
+                    else if (operator === '/') result = valB !== 0 ? valA / valB : 0;
+                }
+                
+                row[newName] = result;
+            });
+
+            // Forzar que la nueva columna sea numérica
+            kpiAgent.columnTypes[newName] = 'Numeric';
+            kpiAgent.manualColumnTypes[newName] = 'Numeric';
+            
+            // Re-analizar KPIs y re-renderizar todo
+            currentKPIs = kpiAgent.analyze(cachedRawData);
+            renderDashboard(cachedRawData);
+            
+            // Reset fields
+            document.getElementById('calc-new-name').value = '';
+            body.classList.add('hidden');
+            icon.className = 'fas fa-chevron-down toggle-icon';
+            
+            // Scroll a la tabla para ver la nueva columna
+            document.getElementById('preview-table').scrollIntoView({ behavior: 'smooth', block: 'center' });
+        });
+    }
+}
+
+async function exportToFullPDF() {
+    if (!currentKPIs || currentKPIs.length === 0) {
+        alert("No hay datos analizados para exportar.");
+        return;
+    }
+
+    const btn = document.getElementById('export-pdf-full-btn');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generando...';
+    btn.disabled = true;
+
+    try {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF('p', 'mm', 'a4');
+        const pageW = doc.internal.pageSize.getWidth();   // 210mm
+        const pageH = doc.internal.pageSize.getHeight();  // 297mm
+        const margin = 14;
+        const contentW = pageW - margin * 2;
+
+        // ─── PALETA DE COLORES FIJA ───────────────────────────────────────────
+        const C = {
+            primary:   [79,  70,  229],   // indigo
+            accent:    [139, 92,  246],   // violeta
+            success:   [34,  197, 94],    // verde
+            warning:   [234, 179, 8],     // amarillo
+            dark:      [15,  23,  42],    // fondo oscuro
+            mid:       [71,  85,  105],   // gris medio
+            light:     [241, 245, 249],   // fondo claro
+            white:     [255, 255, 255],
+            border:    [203, 213, 225],
+        };
+
+        let curY = margin;
+
+        // ─── FUNCIÓN AUXILIAR: nueva página si es necesario ──────────────────
+        function checkPage(neededHeight) {
+            if (curY + neededHeight > pageH - margin) {
+                doc.addPage();
+                curY = margin;
+            }
+        }
+
+        // ─── ENCABEZADO ───────────────────────────────────────────────────────
+        // Franja superior degradada simulada con rectángulos superpuestos
+        doc.setFillColor(...C.primary);
+        doc.rect(0, 0, pageW, 28, 'F');
+        doc.setFillColor(...C.accent);
+        doc.rect(pageW - 60, 0, 60, 28, 'F');
+
+        // Logo / Título
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(18);
+        doc.setTextColor(...C.white);
+        doc.text('Claytics', margin, 12);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        doc.text('Reporte Especializado', margin, 20);
+
+        // Metadata a la derecha
+        doc.setFontSize(8);
+        doc.setTextColor(200, 200, 255);
+        const fecha = new Date().toLocaleString('es-MX');
+        doc.text(fecha, pageW - margin, 12, { align: 'right' });
+        doc.text(`Archivo: ${currentFileName}`, pageW - margin, 20, { align: 'right' });
+
+        curY = 36;
+
+        // ─── SECCIÓN KPIs ─────────────────────────────────────────────────────
+        // Título de sección
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(11);
+        doc.setTextColor(...C.primary);
+        doc.text('▌ Indicadores Clave (KPIs)', margin, curY);
+        curY += 4;
+
+        // Línea separadora
+        doc.setDrawColor(...C.primary);
+        doc.setLineWidth(0.5);
+        doc.line(margin, curY, pageW - margin, curY);
+        curY += 4;
+
+        // Dibujar KPI cards: 3 por fila
+        const colsPerRow = 3;
+        const cardGap = 4;
+        const cardW = (contentW - cardGap * (colsPerRow - 1)) / colsPerRow;
+        const cardH = 18;
+
+        const KPI_COLORS = [C.primary, C.accent, [6,182,212], [16,185,129], [245,158,11], [239,68,68]];
+
+        currentKPIs.forEach((kpi, i) => {
+            const col = i % colsPerRow;
+            const row = Math.floor(i / colsPerRow);
+
+            if (col === 0) checkPage(cardH + 2);
+
+            const x = margin + col * (cardW + cardGap);
+            const y = curY + row * (cardH + cardGap);
+            const color = KPI_COLORS[i % KPI_COLORS.length];
+
+            // Fondo de tarjeta
+            doc.setFillColor(...C.white);
+            doc.roundedRect(x, y, cardW, cardH, 2, 2, 'F');
+
+            // Barra lateral de color
+            doc.setFillColor(...color);
+            doc.roundedRect(x, y, 3, cardH, 1, 1, 'F');
+
+            // Valor (grande)
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(11);
+            doc.setTextColor(...C.dark);
+            const valStr = String(kpi.value).substring(0, 20);
+            doc.text(valStr, x + 7, y + 7);
+
+            // Label (pequeño)
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(7);
+            doc.setTextColor(...C.mid);
+            const labelStr = String(kpi.label).substring(0, 35);
+            doc.text(labelStr, x + 7, y + 13);
+        });
+
+        const kpiRows = Math.ceil(currentKPIs.length / colsPerRow);
+        curY += kpiRows * (cardH + cardGap) + 6;
+
+        // ─── SECCIÓN TIPOS DE DATOS POR COLUMNA ──────────────────────────────
+        checkPage(20);
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(11);
+        doc.setTextColor(...C.primary);
+        doc.text('▌ Tipos de Datos por Columna', margin, curY);
+        curY += 4;
+        doc.setDrawColor(...C.primary);
+        doc.setLineWidth(0.5);
+        doc.line(margin, curY, pageW - margin, curY);
+        curY += 4;
+
+        // Colores por tipo
+        const TYPE_COLORS = {
+            'Numeric':     { bg: [219,234,254], text: [29,78,216],   label: 'Número'   },
+            'Categorical': { bg: [237,233,254], text: [109,40,217],  label: 'Texto'    },
+            'Date':        { bg: [209,250,229], text: [21,128,61],   label: 'Fecha'    },
+            'Boolean':     { bg: [254,243,199], text: [161,98,7],    label: 'Booleano' },
+            'ID':          { bg: [226,232,240], text: [71,85,105],   label: 'ID'       },
+        };
+
+        if (kpiAgent && kpiAgent.columnTypes) {
+            const colEntries = Object.entries(kpiAgent.columnTypes);
+
+            const tableHead = [['Columna', 'Tipo de Dato']];
+            const tableBody = colEntries.map(([col, type]) => {
+                const meta = TYPE_COLORS[type] || TYPE_COLORS['Categorical'];
+                return [col, meta.label];
+            });
+
+            checkPage(30);
+            doc.autoTable({
+                head: tableHead,
+                body: tableBody,
+                startY: curY,
+                margin: { left: margin, right: margin },
+                theme: 'grid',
+                headStyles: {
+                    fillColor: C.primary,
+                    textColor: C.white,
+                    fontStyle: 'bold',
+                    fontSize: 9,
+                    cellPadding: 4,
+                },
+                columnStyles: {
+                    0: { cellWidth: contentW * 0.6, fontSize: 8, textColor: C.dark },
+                    1: { cellWidth: contentW * 0.4, fontSize: 8, fontStyle: 'bold' }
+                },
+                bodyStyles: {
+                    fontSize: 8,
+                    cellPadding: 3,
+                    textColor: C.dark,
+                },
+                alternateRowStyles: {
+                    fillColor: C.light,
+                },
+                didParseCell: function(data) {
+                    if (data.section === 'body' && data.column.index === 1) {
+                        const typeVal = colEntries[data.row.index]?.[1] || 'Categorical';
+                        const meta = TYPE_COLORS[typeVal] || TYPE_COLORS['Categorical'];
+                        data.cell.styles.fillColor = meta.bg;
+                        data.cell.styles.textColor = meta.text;
+                    }
+                },
+                didDrawPage: function(data) {
+                    // Pie de página
+                    doc.setFontSize(7);
+                    doc.setTextColor(150, 150, 150);
+                    doc.text(
+                        `Página ${data.pageNumber} • Claytics`,
+                        pageW / 2,
+                        pageH - 6,
+                        { align: 'center' }
+                    );
+                }
+            });
+            curY = doc.lastAutoTable.finalY + 8;
+        }
+
+        // ─── SECCIÓN DASHBOARDS / GRÁFICAS ───────────────────────────────────
+        const chartCanvases = document.querySelectorAll('#charts-container canvas');
+        if (chartCanvases.length > 0) {
+            checkPage(20);
+
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(11);
+            doc.setTextColor(...C.primary);
+            doc.text('▌ Dashboards', margin, curY);
+            curY += 4;
+            doc.setDrawColor(...C.primary);
+            doc.setLineWidth(0.5);
+            doc.line(margin, curY, pageW - margin, curY);
+            curY += 5;
+
+            // Dos gráficas por fila
+            const chartW = (contentW - 6) / 2;
+            const chartH = chartW * 0.65; // relación de aspecto
+
+            let chartCol = 0;
+            for (const canvasEl of chartCanvases) {
+                checkPage(chartH + 4);
+
+                const imgData = canvasEl.toDataURL('image/png', 1.0);
+                const x = margin + chartCol * (chartW + 6);
+
+                // Fondo blanco de la gráfica
+                doc.setFillColor(...C.white);
+                doc.roundedRect(x, curY, chartW, chartH, 2, 2, 'F');
+                doc.setDrawColor(...C.border);
+                doc.setLineWidth(0.3);
+                doc.roundedRect(x, curY, chartW, chartH, 2, 2, 'S');
+
+                // Insertar imagen del canvas
+                doc.addImage(imgData, 'PNG', x + 1, curY + 1, chartW - 2, chartH - 2);
+
+                chartCol++;
+                if (chartCol >= 2) {
+                    chartCol = 0;
+                    curY += chartH + 5;
+                }
+            }
+            if (chartCol > 0) curY += chartH + 5;
+        }
+
+        // Pie de última página
+        doc.setFontSize(7);
+        doc.setTextColor(150, 150, 150);
+        doc.text(
+            `Página ${doc.internal.getNumberOfPages()} • Claytics`,
+            pageW / 2,
+            pageH - 6,
+            { align: 'center' }
+        );
+
+        const cleanName = currentFileName.replace(/\.[^/.]+$/, "");
+        doc.save(`${cleanName}_Reporte_Especializado.pdf`);
+
+    } catch (error) {
+        console.error("Error generando PDF especializado:", error);
+        alert("Ocurrió un error generando el reporte especializado.");
+    } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+    }
 }
