@@ -12,7 +12,10 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="assets/js/agents.js"></script>
+    <script src="assets/js/kpi_agent.js"></script>
 </head>
 
 <body>
@@ -225,6 +228,7 @@
                 <h3>¡Suelta tu archivo aquí!</h3>
                 <p>Excel, CSV o TXT. Nosotros hacemos el trabajo duro.</p>
                 <input type="file" id="file-input" class="hidden" accept=".csv, .xlsx, .xls, .txt">
+                <input type="file" id="change-file-input" class="hidden" accept=".csv, .xlsx, .xls, .txt">
             </div>
 
             <div class="external-connections">
@@ -434,19 +438,140 @@
         <section id="dashboard-section" class="hidden dashboard-view">
             <div class="data-header">
                 <h2><i class="fas fa-chart-line"></i> Resumen de tu Data</h2>
-                <div class="dashboard-header-actions">
-                    <button class="btn-change-file" id="change-file-btn">
-                        <i class="fas fa-folder-open"></i> Cambiar Archivo
-                    </button>
-                    <input type="file" id="change-file-input" class="hidden" accept=".csv, .xlsx, .xls, .txt">
+                <div class="dashboard-header-actions"></div>
+            </div>
+
+            <!-- Contenedor de Métricas Dinámicas del Agente -->
+            <div class="kpi-grid" id="kpi-container"></div>
+
+            <!-- ═══ PANEL DE KPIs PERSONALIZADOS ═══ -->
+            <div class="custom-kpi-panel" id="custom-kpi-panel">
+                <div class="custom-kpi-header">
+                    <div class="custom-kpi-title">
+                        <i class="fas fa-tachometer-alt"></i>
+                        <span>Mis KPIs</span>
+                        <span class="kpi-count-badge" id="kpi-count-badge">0</span>
+                    </div>
+                    <div class="custom-kpi-actions">
+                        <button class="btn-suggest-kpi" id="suggest-kpi-btn">
+                            <i class="fas fa-lightbulb"></i> Sugerir KPIs con IA
+                        </button>
+                        <button class="btn-new-kpi" id="btn-new-kpi">
+                            <i class="fas fa-plus"></i> Nuevo KPI
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Grid de KPIs personalizados creados por el usuario -->
+                <div class="custom-kpi-grid" id="custom-kpi-grid"></div>
+
+                <!-- Formulario inline para crear/editar un KPI -->
+                <div class="kpi-form-card hidden" id="kpi-form-card">
+                    <div class="kpi-form-header">
+                        <span id="kpi-form-title"><i class="fas fa-edit"></i> Nuevo KPI</span>
+                        <button class="kpi-form-close" id="kpi-form-close"><i class="fas fa-times"></i></button>
+                    </div>
+                    <div class="kpi-form-body">
+                        <div class="kpi-form-row">
+                            <div class="kpi-form-field">
+                                <label>Nombre del KPI</label>
+                                <input type="text" id="kpi-name-input" class="filter-input-text" placeholder="Ej: Ventas Totales">
+                            </div>
+                            <div class="kpi-form-field kpi-form-field-sm">
+                                <label>Ícono</label>
+                                <div class="kpi-icon-picker" id="kpi-icon-picker">
+                                    <button class="kpi-icon-opt active" data-icon="fas fa-chart-line"><i class="fas fa-chart-line"></i></button>
+                                    <button class="kpi-icon-opt" data-icon="fas fa-dollar-sign"><i class="fas fa-dollar-sign"></i></button>
+                                    <button class="kpi-icon-opt" data-icon="fas fa-users"><i class="fas fa-users"></i></button>
+                                    <button class="kpi-icon-opt" data-icon="fas fa-box"><i class="fas fa-box"></i></button>
+                                    <button class="kpi-icon-opt" data-icon="fas fa-percent"><i class="fas fa-percent"></i></button>
+                                    <button class="kpi-icon-opt" data-icon="fas fa-star"><i class="fas fa-star"></i></button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="kpi-form-row">
+                            <div class="kpi-form-field">
+                                <label>Fórmula <span class="kpi-formula-hint">Usa nombres de columna entre llaves: {Ventas}</span></label>
+                                <input type="text" id="kpi-formula-input" class="filter-input-text" placeholder="Ej: SUM({Ventas}) o {Precio} * {Cantidad}">
+                            </div>
+                        </div>
+                        <div class="kpi-formula-cols" id="kpi-formula-cols"></div>
+                        <div class="kpi-form-row kpi-form-row-actions">
+                            <div id="kpi-form-error" class="kpi-form-error hidden"></div>
+                            <button class="btn-apply-f" id="btn-save-kpi"><i class="fas fa-check"></i> Guardar KPI</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Panel de sugerencias del agente -->
+                <div class="kpi-suggestions-panel hidden" id="kpi-suggestions-panel">
+                    <div class="kpi-suggestions-header">
+                        <span><i class="fas fa-robot"></i> Sugerencias del Agente</span>
+                        <button class="kpi-form-close" id="kpi-suggestions-close"><i class="fas fa-times"></i></button>
+                    </div>
+                    <div class="kpi-suggestions-list" id="kpi-suggestions-list"></div>
                 </div>
             </div>
 
-            <!-- Contenedor de Métricas Dinámicas -->
-            <div class="kpi-grid" id="kpi-container"></div>
-
-            <!-- Insights Avanzados -->
+            <!-- Tipos de Datos y Columnas -->
             <div class="insights-grid" id="insights-container"></div>
+
+            <!-- Constructor de Gráficos (Chart Builder) -->
+            <div class="chart-builder-container hidden" id="chart-builder-section">
+                <div class="chart-builder-header">
+                    <h3><i class="fas fa-chart-pie"></i> Constructor de Dashboards</h3>
+                    <p>Diseña gráficos interactivos. Haz clic en un elemento gráfico para filtrar los demás.</p>
+                </div>
+                <div class="chart-builder-controls">
+                    <div class="builder-field">
+                        <label>Tipo de Gráfico</label>
+                        <select id="builder-type" class="filter-input-select">
+                            <option value="bar">Barra</option>
+                            <option value="line">Línea</option>
+                            <option value="pie">Pastel</option>
+                            <option value="doughnut">Dona</option>
+                            <option value="polarArea">Área Polar</option>
+                        </select>
+                    </div>
+                    <div class="builder-field">
+                        <label>Etiquetas (Eje X)</label>
+                        <div class="filter-select-wrapper">
+                            <select id="builder-col-x" class="filter-input-select"></select>
+                        </div>
+                    </div>
+                    <div class="builder-field">
+                        <label>Valores (Eje Y)</label>
+                        <div class="filter-select-wrapper">
+                            <select id="builder-col-y" class="filter-input-select"></select>
+                        </div>
+                    </div>
+                    <div class="builder-action">
+                        <button id="btn-add-chart" class="btn-apply-f" style="margin-top: 24px;"><i class="fas fa-plus"></i> Añadir Gráfico</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Badge Flotante Filtro Activo -->
+            <div id="active-chart-filter-badge" class="active-filter-badge hidden">
+                <span><i class="fas fa-filter"></i> Filtrando: <strong id="active-filter-text">---</strong></span>
+                <button id="btn-clear-chart-filter" title="Limpiar filtro"><i class="fas fa-times"></i></button>
+            </div>
+
+            <!-- Gráficas Dinámicas -->
+            <div class="charts-grid hidden" id="charts-container">
+                <!-- Se inyectarán tarjetas de gráficos aquí -->
+            </div>
+
+            <!-- BARRA DE CAMBIO DE HOJA (visible solo en Excel multi-hoja) -->
+            <div class="switch-sheet-bar hidden" id="switch-sheet-bar">
+                <div class="switch-sheet-info">
+                    <i class="fas fa-file-excel" style="color: #10B981;"></i>
+                    <span id="switch-sheet-label">Hoja activa: —</span>
+                </div>
+                <button class="btn-switch-sheet" id="switch-sheet-btn">
+                    <i class="fas fa-exchange-alt"></i> Cambiar de Hoja
+                </button>
+            </div>
 
             <!-- SECCIÓN 4: VISTA PREVIA Y LABORATORIO DE ANÁLISIS -->
             <div id="data-preview-section" class="data-preview-container hidden">
@@ -462,6 +587,9 @@
                         </div>
                         <button class="btn-clean" id="clean-btn">
                             <i class="fas fa-broom"></i> Limpiar Data
+                        </button>
+                        <button class="btn-change-file" id="change-file-btn">
+                            <i class="fas fa-folder-open"></i> Cambiar Archivo
                         </button>
                     </div>
                 </div>
@@ -524,6 +652,51 @@
                             <button id="btn-reset-filters" class="btn-reset-f"><i class="fas fa-trash-can"></i> Limpiar
                                 Filtros</button>
                         </div>
+                    </div>
+                </div>
+
+                <!-- PANEL DE COLUMNA CALCULADA -->
+                <div class="filter-panel-card" id="calc-col-card">
+                    <div class="filter-panel-header" id="calc-toggle-btn">
+                        <span><i class="fas fa-calculator"></i> Transformación: Columna Calculada</span>
+                        <i class="fas fa-chevron-down toggle-icon" id="calc-toggle-icon"></i>
+                    </div>
+                    <div class="filter-panel-body hidden" id="calc-panel-body">
+                        <p class="filter-help">Crea una nueva columna operando matemáticamente sobre dos columnas numéricas existentes:</p>
+                        
+                        <div class="calc-formula-row">
+                            <div class="calc-field">
+                                <label>Nombre Nueva Columna:</label>
+                                <input type="text" id="calc-new-name" class="filter-input-text" placeholder="Ej: Total_Ingresos">
+                            </div>
+                            <div class="calc-field">
+                                <label>Columna A:</label>
+                                <div class="filter-select-wrapper">
+                                    <select id="calc-col-a" class="filter-input-select"></select>
+                                </div>
+                            </div>
+                            <div class="calc-field calc-op-field">
+                                <label>Operador:</label>
+                                <div class="filter-select-wrapper">
+                                    <select id="calc-operator" class="filter-input-select">
+                                        <option value="+">+</option>
+                                        <option value="-">-</option>
+                                        <option value="*">×</option>
+                                        <option value="/">÷</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="calc-field">
+                                <label>Columna B:</label>
+                                <div class="filter-select-wrapper">
+                                    <select id="calc-col-b" class="filter-input-select"></select>
+                                </div>
+                            </div>
+                            <div class="calc-action">
+                                <button id="btn-create-col" class="btn-apply-f" style="margin-top: 24px;"><i class="fas fa-plus"></i> Crear Columna</button>
+                            </div>
+                        </div>
+                        <div id="calc-error-msg" class="calc-error hidden">Por favor, rellena todos los campos correctamente.</div>
                     </div>
                 </div>
 
@@ -653,16 +826,6 @@
                         </div>
                     </div>
 
-                    <!-- Botón Cambiar de Hoja (solo visible con Excel multi-hoja) -->
-                    <div class="switch-sheet-bar hidden" id="switch-sheet-bar">
-                        <div class="switch-sheet-info">
-                            <i class="fas fa-layer-group"></i>
-                            <span id="switch-sheet-label">Hoja activa: —</span>
-                        </div>
-                        <button class="btn-switch-sheet" id="switch-sheet-btn">
-                            <i class="fas fa-exchange-alt"></i> Cambiar de Hoja
-                        </button>
-                    </div>
 
                     <!-- Panel de Descarga Inferior -->
                     <div class="table-footer-actions">
@@ -676,9 +839,14 @@
                             <button class="btn-export" data-format="csv" id="export-csv-btn" title="Descargar como CSV">
                                 <i class="fas fa-file-csv"></i> CSV
                             </button>
-                            <button class="btn-export" data-format="pdf" id="export-pdf-btn" title="Descargar como PDF">
-                                <i class="fas fa-file-pdf"></i> PDF
-                            </button>
+                            <div class="pdf-export-group" style="display: flex; gap: 5px;">
+                                <button class="btn-export" id="export-pdf-simple-btn" title="Descargar Solo Tabla PDF">
+                                    <i class="fas fa-file-pdf"></i> PDF Simple
+                                </button>
+                                <button class="btn-export pdf-full-btn" id="export-pdf-full-btn" title="Descargar Reporte Completo con Gráficas">
+                                    <i class="fas fa-file-invoice"></i> Reporte PDF
+                                </button>
+                            </div>
                             <button class="btn-export" data-format="txt" id="export-txt-btn" title="Descargar como TXT">
                                 <i class="fas fa-file-lines"></i> TXT
                             </button>

@@ -11,6 +11,7 @@ class KPIAgent {
         this.data = null;
         this.columns = [];
         this.columnTypes = {}; // Guardará el tipo de cada columna
+        this.manualColumnTypes = {}; // Guardará los tipos modificados manualmente por el usuario
         this.maxKPIs = 6; // Límite de KPIs principales a mostrar para no saturar
     }
 
@@ -78,6 +79,10 @@ class KPIAgent {
         ];
 
         this.columns.forEach(col => {
+            if (this.manualColumnTypes && this.manualColumnTypes[col]) {
+                this.columnTypes[col] = this.manualColumnTypes[col];
+                return;
+            }
             const lowerCol = col.toLowerCase();
             const samples = this.data.slice(0, sampleSize).map(r => r[col]).filter(v => v !== null && v !== "" && v !== undefined);
 
