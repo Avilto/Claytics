@@ -23,7 +23,7 @@ function evaluateKpiFormula(formula, data) {
     const colRefs = [...formula.matchAll(/\{([^}]+)\}/g)].map(m => m[1]);
     if (colRefs.length === 0) return { ok: false, msg: 'Incluye al menos una columna entre llaves: {Columna}' };
 
-    const columns = Object.keys(data[0]);
+    const columns = Object.keys(data[0] || {});
     for (const ref of colRefs) {
         if (!columns.includes(ref)) {
             return { ok: false, msg: `La columna "${ref}" no existe en el dataset.` };
@@ -146,7 +146,7 @@ function updateFormulaCols() {
     const container = document.getElementById('kpi-formula-cols');
     if (!container || !cachedRawData || cachedRawData.length === 0) return;
 
-    const numCols = Object.keys(cachedRawData[0]).filter(col => {
+    const numCols = Object.keys(cachedRawData[0] || {}).filter(col => {
         const type = (window.kpiAgent && kpiAgent.columnTypes[col]) || 'Categorical';
         return type === 'Numeric';
     });
@@ -339,7 +339,7 @@ function suggestKpis() {
 function generateKpiSuggestions(data) {
     if (!data || data.length === 0) return [];
 
-    const columns = Object.keys(data[0]);
+    const columns = Object.keys(data[0] || {});
     const numCols = columns.filter(col => {
         const type = (window.kpiAgent && kpiAgent.columnTypes[col]) || guessType(data, col);
         return type === 'Numeric';

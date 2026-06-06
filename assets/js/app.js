@@ -300,7 +300,7 @@ function renderDashboard(data) {
     });
 
     // Insight único: nombres de columnas del dataset
-    const columns = Object.keys(data[0]);
+    const columns = Object.keys(data[0] || {});
     if (insightsContainer) renderColumnsInsight(columns, insightsContainer);
 
     // Renderizar tabla de datos
@@ -2214,6 +2214,7 @@ async function exportToFullPDF() {
     } finally {
         btn.innerHTML = originalText;
         btn.disabled = false;
+    }
 }
 
 // LOGIN LOGIC
