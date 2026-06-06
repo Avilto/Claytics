@@ -18,6 +18,20 @@ let currentKPIs = [];
 let currentWorkbook = null;      // Workbook actual de Excel (para cambiar de hoja)
 let currentSheetName = null;     // Nombre de la hoja activa
 
+// Variables del Historial y Consumo
+let fileHistory = JSON.parse(localStorage.getItem('claytics-file-history') || '[]');
+let analysisCount = parseInt(localStorage.getItem('claytics-analysis-count') || '0');
+
+// Formatear bytes de forma amigable
+function formatBytes(bytes, decimals = 2) {
+    if (bytes === 0 || !bytes) return '0 Bytes';
+    const k = 1024;
+    const dm = decimals < 0 ? 0 : decimals;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+}
+
 // 1. Gestión de Selección de Archivo
 if (dropZone && fileInput) {
     dropZone.addEventListener('click', () => {
@@ -71,12 +85,21 @@ startBtn.addEventListener('click', async () => {
                     // Cargar múltiples hojas: abrir el modal interactivo de selección
                     showSheetSelector(wb, sheetNames);
                 } else {
-                    // Procesar la única hoja directamente
+                    // Una sola hoja → pasar por el detector de múltiples tablas
                     welcomeSection.classList.add('hidden');
                     moldingSection.classList.remove('hidden');
                     currentSheetName = sheetNames[0];
-                    const rawData = XLSX.utils.sheet_to_json(wb.Sheets[sheetNames[0]]);
-                    await processData(rawData);
+                    // Nota: handleExcelSheetWithDetection se define al final del archivo.
+                    // Usamos setTimeout para garantizar que la función esté disponible.
+                    setTimeout(async () => {
+                        try {
+                            await handleExcelSheetWithDetection(wb, sheetNames[0]);
+                        } catch (err) {
+                            console.error(err);
+                            alert('Error al procesar el archivo Excel.');
+                            location.reload();
+                        }
+                    }, 0);
                 }
             } catch (error) {
                 console.error(error);
@@ -139,8 +162,16 @@ if (changeFileBtn && changeFileInput) {
                         showSheetSelector(wb, sheetNames);
                     } else {
                         currentSheetName = sheetNames[0];
-                        const rawData = XLSX.utils.sheet_to_json(wb.Sheets[sheetNames[0]]);
-                        await processData(rawData);
+                        // Pasar por el detector de múltiples tablas
+                        setTimeout(async () => {
+                            try {
+                                await handleExcelSheetWithDetection(wb, sheetNames[0]);
+                            } catch (err) {
+                                console.error(err);
+                                alert('Error al leer el nuevo archivo Excel.');
+                                location.reload();
+                            }
+                        }, 0);
                     }
                 } catch (error) {
                     console.error(error);
@@ -157,6 +188,17 @@ if (changeFileBtn && changeFileInput) {
 
 // Función de procesamiento unificado de datos (Agentes + Renderizado)
 async function processData(rawData) {
+    // Validar consumo límite (10 análisis al mes) — solo si no tiene Plan Pro
+    const userPlan = localStorage.getItem('claytics-plan') || 'free';
+    analysisCount = parseInt(localStorage.getItem('claytics-analysis-count') || '0');
+    if (userPlan !== 'pro' && analysisCount >= 10) {
+        alert("¡Límite excedido! Has consumido tus 10 análisis mensuales.\n\nActualiza a Plan Pro en la pestaña Plan y Facturación para continuar.");
+        if (moldingSection) moldingSection.classList.add('hidden');
+        if (welcomeSection) welcomeSection.classList.remove('hidden');
+        return;
+    }
+
+
     try {
         // Revisar si existe una columna ID, de lo contrario agregarla
         const hasId = Object.keys(rawData[0] || {}).some(k => k.toLowerCase() === 'id');
@@ -180,6 +222,35 @@ async function processData(rawData) {
         // DELEGAMOS AL AGENTE DE KPIS
         currentKPIs = kpiAgent.analyze(data);
         renderDashboard(data);
+        
+        // Sumar al contador de consumo y guardar
+        analysisCount++;
+        localStorage.setItem('claytics-analysis-count', analysisCount.toString());
+        if (typeof updateUsageProgress === 'function') updateUsageProgress();
+        
+        // Guardar archivo en el historial
+        const fileSize = currentFileData ? formatBytes(currentFileData.size) : '—';
+        const fileExt = currentFileName ? currentFileName.split('.').pop().toUpperCase() : 'CSV';
+        if (typeof addFileToHistory === 'function') {
+            addFileToHistory({
+                name: currentFileName || "Archivo sin nombre",
+                size: fileSize,
+                type: fileExt,
+                rows: data.length,
+                cols: Object.keys(rawData[0] || {}).length,
+                date: new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
+            });
+        }
+
+        // Asegurar que la barra lateral muestre la pestaña de "Nuevo Proyecto" como activa
+        const navBtns = document.querySelectorAll('.nav-btn[data-target]');
+        navBtns.forEach(btn => btn.classList.remove('active'));
+        const welcomeBtn = document.querySelector('.nav-btn[data-target="welcome-section"]');
+        if (welcomeBtn) welcomeBtn.classList.add('active');
+
+        // Cerrar secciones del sidebar y mostrar dashboard
+        const mainSections = document.querySelectorAll('.main-content > section');
+        mainSections.forEach(sec => sec.classList.add('hidden'));
         
         moldingSection.classList.add('hidden');
         dashboardSection.classList.remove('hidden');
@@ -394,6 +465,14 @@ function checkRowIssue(row, issueId, arr) {
         const c = issueId.replace('type_name_', '');
         const val = String(row[c] || '').trim();
         return /^\d+$/.test(val);
+    } else if (issueId === 'partial_nulls') {
+        // Fila que tiene al menos una celda nula en cualquier columna
+        return Object.values(row).some(v => v === null || v === undefined || v === '');
+    } else if (issueId === 'semi_empty_rows') {
+        // Fila con más del 50% de celdas vacías
+        const vals = Object.values(row);
+        const nullCount = vals.filter(v => v === null || v === undefined || v === '').length;
+        return vals.length > 0 && (nullCount / vals.length) >= 0.5;
     }
     return false; // If issue ID doesn't match, return false so it doesn't show randomly.
 }
@@ -1464,49 +1543,243 @@ function initExportListeners() {
 }
 
 // ═══════════════════════════════════════════════════════
-// LOGIN LOGIC
+// AUTH LOGIC (REGISTRO, LOGIN, VERIFICACIÓN)
 // ═══════════════════════════════════════════════════════
-const loginForm = document.getElementById('login-form');
-const loginSection = document.getElementById('login-section');
 
-if (loginForm && loginSection) {
-    loginForm.addEventListener('submit', (e) => {
+const loginSection    = document.getElementById('login-section');
+const verifSection    = document.getElementById('verification-section');
+
+// Helper: activar sesión y entrar a la app
+function activateSession(name, age, email, sector, needsVerify) {
+    localStorage.setItem('claytics-session-name', name);
+    localStorage.setItem('claytics-session-age', age);
+    localStorage.setItem('claytics-session-email', email);
+    localStorage.setItem('claytics-session-sector', sector);
+    localStorage.setItem('claytics-needs-verification', needsVerify ? 'true' : 'false');
+
+    const sidebarName   = document.getElementById('sidebar-user-name');
+    const sidebarSector = document.getElementById('sidebar-user-sector');
+    if (sidebarName)   sidebarName.textContent   = name;
+    if (sidebarSector) sidebarSector.textContent = sector;
+
+    if (typeof populateUserProfile === 'function') populateUserProfile(name, age, email, sector);
+
+    // Añadir clase para evitar scroll en body
+    document.body.classList.add('user-logged-in');
+
+    if (loginSection)   loginSection.classList.add('hidden');
+    if (verifSection)   verifSection.classList.add('hidden');
+
+    const loggedInLayout = document.getElementById('logged-in-layout');
+    if (loggedInLayout) loggedInLayout.classList.remove('hidden');
+    if (welcomeSection) welcomeSection.classList.remove('hidden');
+
+    if (needsVerify) {
+        if (typeof showVerificationBanner === 'function') showVerificationBanner(email);
+    } else {
+        if (typeof hideVerificationBanner === 'function') hideVerificationBanner();
+    }
+}
+
+// ─── Toggle entre REGISTRO y LOGIN ───────────────────────
+const linkToLogin    = document.getElementById('link-to-login');
+const linkToRegister = document.getElementById('link-to-register');
+const registerFormContainer = document.getElementById('register-form-container');
+const loginFormContainer    = document.getElementById('login-form-container');
+
+if (linkToLogin) {
+    linkToLogin.addEventListener('click', (e) => {
         e.preventDefault();
-        
-        // Simular inicio de sesión guardando datos básicos en memoria (o localStorage)
-        const name = document.getElementById('login-name').value;
-        const age = document.getElementById('login-age').value;
-        const email = document.getElementById('login-email').value;
-        const sector = document.getElementById('login-sector').value;
-        
-        console.log(`User logged in: ${name}, ${age}, ${email}, ${sector}`);
-        
-        // Actualizar UI del Sidebar
-        const sidebarName = document.getElementById('sidebar-user-name');
-        const sidebarSector = document.getElementById('sidebar-user-sector');
-        if (sidebarName) sidebarName.textContent = name || 'Usuario';
-        if (sidebarSector) sidebarSector.textContent = sector || 'General';
-
-        // Ocultar login y mostrar layout principal
-        loginSection.classList.add('hidden');
-        const loggedInLayout = document.getElementById('logged-in-layout');
-        if (loggedInLayout) loggedInLayout.classList.remove('hidden');
-        welcomeSection.classList.remove('hidden');
+        registerFormContainer.classList.add('hidden');
+        loginFormContainer.classList.remove('hidden');
+    });
+}
+if (linkToRegister) {
+    linkToRegister.addEventListener('click', (e) => {
+        e.preventDefault();
+        loginFormContainer.classList.add('hidden');
+        registerFormContainer.classList.remove('hidden');
     });
 }
 
-// Botón de Cerrar Sesión
-const logoutBtn = document.getElementById('btn-logout');
-if (logoutBtn) {
-    logoutBtn.addEventListener('click', () => {
-        const loggedInLayout = document.getElementById('logged-in-layout');
-        if (loggedInLayout) loggedInLayout.classList.add('hidden');
+// ─── FORMULARIO DE REGISTRO ───────────────────────────────
+const registerForm = document.getElementById('register-form');
+const registerSectorEl = document.getElementById('register-sector');
+const registerCustomSectorGroup = document.getElementById('register-custom-sector-group');
+const registerCustomSector = document.getElementById('register-custom-sector');
+
+if (registerSectorEl) {
+    registerSectorEl.addEventListener('change', () => {
+        if (registerSectorEl.value === 'Otro') {
+            registerCustomSectorGroup.classList.remove('hidden');
+            registerCustomSector.required = true;
+        } else {
+            registerCustomSectorGroup.classList.add('hidden');
+            registerCustomSector.required = false;
+            registerCustomSector.value = '';
+        }
+    });
+}
+
+if (registerForm) {
+    registerForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+
+        const name     = document.getElementById('register-name').value.trim();
+        const age      = document.getElementById('register-age').value.trim();
+        const email    = document.getElementById('register-email').value.trim();
+        let   sector   = registerSectorEl ? registerSectorEl.value : 'General';
+        const password = document.getElementById('register-password').value;
+        const confirm  = document.getElementById('register-confirm-password').value;
+
+        if (sector === 'Otro') {
+            sector = (registerCustomSector && registerCustomSector.value.trim()) || 'Otro';
+        }
+
+        // Validar clave: exactamente 6 dígitos numéricos
+        if (!/^\d{6}$/.test(password)) {
+            alert('La clave debe ser exactamente 6 dígitos numéricos (ej: 123456).');
+            return;
+        }
+        if (password !== confirm) {
+            alert('Las claves no coinciden. Por favor vuelve a ingresarlas.');
+            return;
+        }
+
+        // Guardar cuenta
+        localStorage.setItem('claytics-session-name', name);
+        localStorage.setItem('claytics-session-age', age);
+        localStorage.setItem('claytics-session-email', email);
+        localStorage.setItem('claytics-session-sector', sector);
+        localStorage.setItem('claytics-user-password', password);
+        localStorage.setItem('claytics-needs-verification', 'true');
+
+        // Mostrar pantalla de verificación restrictiva
+        if (loginSection) loginSection.classList.add('hidden');
+        if (verifSection) {
+            const emailEl = document.getElementById('verification-screen-email');
+            if (emailEl) emailEl.textContent = email;
+            verifSection.classList.remove('hidden');
+        }
+    });
+}
+
+// ─── PANTALLA DE VERIFICACIÓN ─────────────────────────────
+const btnVerifySuccess = document.getElementById('btn-verify-success');
+const btnVerifyResend  = document.getElementById('btn-verify-resend');
+const linkVerifBack    = document.getElementById('link-verification-back');
+
+if (btnVerifySuccess) {
+    btnVerifySuccess.addEventListener('click', () => {
+        const name   = localStorage.getItem('claytics-session-name')   || 'Usuario';
+        const age    = localStorage.getItem('claytics-session-age')    || '';
+        const email  = localStorage.getItem('claytics-session-email')  || '';
+        const sector = localStorage.getItem('claytics-session-sector') || 'General';
+        localStorage.setItem('claytics-needs-verification', 'false');
+        activateSession(name, age, email, sector, false);
+    });
+}
+
+if (btnVerifyResend) {
+    btnVerifyResend.addEventListener('click', () => {
+        const email = localStorage.getItem('claytics-session-email') || 'tu@correo.com';
+        alert(`¡Correo de verificación reenviado a ${email}!\nRevisa tu bandeja de entrada o spam.`);
+    });
+}
+
+if (linkVerifBack) {
+    linkVerifBack.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (verifSection) verifSection.classList.add('hidden');
         if (loginSection) loginSection.classList.remove('hidden');
     });
 }
 
+// ─── FORMULARIO DE LOGIN (USUARIOS EXISTENTES) ───────────
+const loginForm = document.getElementById('login-form');
+
+if (loginForm) {
+    loginForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+
+        const email    = document.getElementById('login-email').value.trim();
+        const password = document.getElementById('login-password').value;
+
+        const savedEmail = localStorage.getItem('claytics-session-email');
+        const savedPass  = localStorage.getItem('claytics-user-password');
+
+        if (!savedEmail || !savedPass) {
+            alert('No existe una cuenta registrada. Por favor crea una cuenta primero.');
+            if (loginFormContainer) loginFormContainer.classList.add('hidden');
+            if (registerFormContainer) registerFormContainer.classList.remove('hidden');
+            return;
+        }
+
+        if (email !== savedEmail) {
+            alert('El correo electrónico no corresponde a ninguna cuenta registrada.');
+            return;
+        }
+        if (password !== savedPass) {
+            alert('La clave es incorrecta. Por favor inténtalo de nuevo.');
+            return;
+        }
+
+        const name   = localStorage.getItem('claytics-session-name')   || 'Usuario';
+        const age    = localStorage.getItem('claytics-session-age')    || '';
+        const sector = localStorage.getItem('claytics-session-sector') || 'General';
+
+        activateSession(name, age, email, sector, false);
+    });
+}
+
+// ─── SOCIAL LOGIN / OAUTH ─────────────────────────────────
+const socialButtons = [
+    { id: 'btn-google-login',    provider: 'Google',    defaultName: 'Usuario Google',    defaultSector: 'Tecnología' },
+    { id: 'btn-microsoft-login', provider: 'Microsoft', defaultName: 'Usuario Microsoft', defaultSector: 'Finanzas'   },
+    { id: 'btn-github-login',    provider: 'GitHub',    defaultName: 'Desarrollador GitHub', defaultSector: 'Tecnología' },
+    { id: 'btn-icloud-login',    provider: 'iCloud',    defaultName: 'Usuario iCloud',    defaultSector: 'Educación'  }
+];
+
+socialButtons.forEach(btnInfo => {
+    const btn = document.getElementById(btnInfo.id);
+    if (btn) {
+        btn.addEventListener('click', () => {
+            const mockEmail = `${btnInfo.defaultName.toLowerCase().replace(/\s+/g, '')}@${btnInfo.provider.toLowerCase()}.com`;
+            localStorage.setItem('claytics-user-password', '');
+            activateSession(btnInfo.defaultName, '28', mockEmail, btnInfo.defaultSector, false);
+        });
+    }
+});
+
+// ─── CERRAR SESIÓN ────────────────────────────────────────
+const logoutBtn = document.getElementById('btn-logout');
+if (logoutBtn) {
+    logoutBtn.addEventListener('click', () => {
+        localStorage.removeItem('claytics-session-name');
+        localStorage.removeItem('claytics-session-age');
+        localStorage.removeItem('claytics-session-email');
+        localStorage.removeItem('claytics-session-sector');
+        localStorage.removeItem('claytics-needs-verification');
+
+        document.body.classList.remove('user-logged-in');
+
+        const loggedInLayout = document.getElementById('logged-in-layout');
+        if (loggedInLayout) loggedInLayout.classList.add('hidden');
+
+        // Restablecer vista de registro
+        if (loginFormContainer) loginFormContainer.classList.add('hidden');
+        if (registerFormContainer) registerFormContainer.classList.remove('hidden');
+        if (registerForm) registerForm.reset();
+        if (loginForm) loginForm.reset();
+
+        if (loginSection) loginSection.classList.remove('hidden');
+    });
+}
+
+
 // ═══════════════════════════════════════════════════════
 // FEEDBACK LOGIC
+
 // ═══════════════════════════════════════════════════════
 const feedbackFab = document.getElementById('feedback-fab');
 const feedbackModal = document.getElementById('feedback-modal');
@@ -1559,3 +1832,699 @@ if (feedbackFab && feedbackModal) {
         });
     }
 }
+
+// ════════════════════════════════════════════════════════════
+// DETECTOR DE MÚLTIPLES TABLAS EN UNA HOJA DE EXCEL
+// Detecta tablas separadas: vertical (una debajo de otra)
+// y horizontal (una al lado de la otra) y muestra el modal.
+// ════════════════════════════════════════════════════════════
+
+/**
+ * Analiza una hoja de XLSX y detecta si contiene múltiples tablas
+ * separadas por filas o columnas vacías.
+ * Retorna un array de objetos de tabla detectada.
+ */
+function detectTablesInSheet(sheetObj) {
+    if (!sheetObj || !sheetObj['!ref']) return [];
+
+    const range = XLSX.utils.decode_range(sheetObj['!ref']);
+    const maxRow = range.e.r;
+    const maxCol = range.e.c;
+
+    // Construir matriz de presencia de celdas (true = tiene dato)
+    const hasData = [];
+    for (let r = 0; r <= maxRow; r++) {
+        hasData[r] = [];
+        for (let c = 0; c <= maxCol; c++) {
+            const addr = XLSX.utils.encode_cell({ r, c });
+            const cell = sheetObj[addr];
+            hasData[r][c] = !!(cell && cell.v !== undefined && cell.v !== null && String(cell.v).trim() !== '');
+        }
+    }
+
+    // Detectar filas completamente vacías
+    const emptyRows = new Set();
+    for (let r = 0; r <= maxRow; r++) {
+        if (hasData[r].every(v => !v)) emptyRows.add(r);
+    }
+
+    // Detectar columnas completamente vacías
+    const emptyCols = new Set();
+    for (let c = 0; c <= maxCol; c++) {
+        if (hasData.every(row => !row[c])) emptyCols.add(c);
+    }
+
+    // Agrupar índices contiguos no-vacíos en bloques
+    function getContiguousBlocks(total, emptySet) {
+        const blocks = [];
+        let current = [];
+        for (let i = 0; i <= total; i++) {
+            if (emptySet.has(i)) {
+                if (current.length > 0) { blocks.push(current); current = []; }
+            } else {
+                current.push(i);
+            }
+        }
+        if (current.length > 0) blocks.push(current);
+        return blocks;
+    }
+
+    const rowBlocks = getContiguousBlocks(maxRow, emptyRows);
+    const colBlocks = getContiguousBlocks(maxCol, emptyCols);
+
+    // Si hay solo un bloque de cada tipo → es una sola tabla
+    if (rowBlocks.length <= 1 && colBlocks.length <= 1) return [];
+
+    const tables = [];
+
+    // Extraer sub-tabla de una combinación de bloques de fila y columna
+    function extractSubTable(rb, cb, orientation, gridPos) {
+        const subSheet = {};
+        rb.forEach((r, ri) => {
+            cb.forEach((c, ci) => {
+                const srcAddr = XLSX.utils.encode_cell({ r, c });
+                const dstAddr = XLSX.utils.encode_cell({ r: ri, c: ci });
+                if (sheetObj[srcAddr]) subSheet[dstAddr] = sheetObj[srcAddr];
+            });
+        });
+        subSheet['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: rb.length - 1, c: cb.length - 1 } });
+        const data = XLSX.utils.sheet_to_json(subSheet);
+        if (data.length > 0) {
+            const cols = Object.keys(data[0] || {});
+            tables.push({
+                index: tables.length + 1,
+                data,
+                orientation,
+                rows: data.length,
+                cols: cols.length,
+                columns: cols,
+                startRow: rb[0],
+                startCol: cb[0],
+                gridPos: gridPos || null
+            });
+        }
+    }
+
+    if (rowBlocks.length > 1 && colBlocks.length === 1) {
+        // VERTICAL: tablas una debajo de otra
+        rowBlocks.forEach(rb => extractSubTable(rb, colBlocks[0], 'vertical', null));
+    } else if (colBlocks.length > 1 && rowBlocks.length === 1) {
+        // HORIZONTAL: tablas lado a lado
+        colBlocks.forEach(cb => extractSubTable(rowBlocks[0], cb, 'horizontal', null));
+    } else {
+        // CUADRÍCULA: combinación de ambos
+        rowBlocks.forEach((rb, ri) => {
+            colBlocks.forEach((cb, ci) => {
+                extractSubTable(rb, cb, 'grid', `Sector Fila ${ri + 1}, Col ${ci + 1}`);
+            });
+        });
+    }
+
+    return tables;
+}
+
+/**
+ * Construye un mini preview visual (grilla de celdas) para la tarjeta.
+ */
+function buildMiniPreview(numCols) {
+    const cols = Math.min(numCols, 5);
+    const headerRow = `<div class="mini-row">${'<div class="mini-cell header"></div>'.repeat(cols)}</div>`;
+    const dataRows  = [0,1,2].map(() => `<div class="mini-row">${'<div class="mini-cell data"></div>'.repeat(cols)}</div>`).join('');
+    return headerRow + dataRows;
+}
+
+/**
+ * Intenta combinar múltiples tablas en una sola (UNION de columnas).
+ */
+function combineTablesData(tables) {
+    const allColumns = new Set();
+    tables.forEach(t => t.columns.forEach(c => allColumns.add(c)));
+    const cols = [...allColumns];
+    const combined = [];
+    tables.forEach(tbl => {
+        tbl.data.forEach(row => {
+            const newRow = { _tabla_origen: `Tabla ${tbl.index}` };
+            cols.forEach(c => { newRow[c] = (row[c] !== undefined) ? row[c] : null; });
+            combined.push(newRow);
+        });
+    });
+    return combined;
+}
+
+/**
+ * Carga una tabla seleccionada (individual o combinada) al pipeline.
+ */
+async function loadTableFromMulti(data) {
+    if (!data || data.length === 0) {
+        alert('Esta tabla no tiene datos válidos para analizar.');
+        return;
+    }
+    if (!dashboardSection.classList.contains('hidden')) dashboardSection.classList.add('hidden');
+    welcomeSection.classList.add('hidden');
+    moldingSection.classList.remove('hidden');
+    try {
+        await processData(data);
+    } catch (err) {
+        console.error(err);
+        alert('Error al cargar la tabla seleccionada.');
+        location.reload();
+    }
+}
+
+/**
+ * Muestra el modal interactivo de selección de tablas múltiples.
+ */
+function showMultiTableModal(tables, wb, sheetName) {
+    const modal   = document.getElementById('multitable-modal');
+    const cards   = document.getElementById('multitable-cards');
+    const countEl = document.getElementById('multitable-count');
+    const oriEl   = document.getElementById('multitable-orientation-text');
+    if (!modal || !cards) return;
+
+    const oriMap = {
+        vertical:   '↕ Tablas en disposición vertical (una debajo de otra)',
+        horizontal: '↔ Tablas en disposición horizontal (lado a lado)',
+        grid:       '⊞ Tablas en cuadrícula (disposición mixta)'
+    };
+    const orient = tables[0]?.orientation || 'vertical';
+    if (countEl) countEl.textContent = tables.length;
+    if (oriEl)   oriEl.textContent   = oriMap[orient] || oriMap.vertical;
+
+    cards.innerHTML = '';
+    tables.forEach(tbl => {
+        const preview  = buildMiniPreview(tbl.cols);
+        const colNames = tbl.columns.slice(0, 4).join(', ') + (tbl.columns.length > 4 ? '…' : '');
+        const gridInfo = tbl.gridPos ? `<span><i class="fas fa-border-all"></i> ${tbl.gridPos}</span>` : '';
+
+        const card = document.createElement('div');
+        card.className = 'multitable-card';
+        card.innerHTML = `
+            <div class="multitable-card-icon"><i class="fas fa-table"></i></div>
+            <div class="multitable-card-info">
+                <div class="multitable-card-name">Tabla ${tbl.index}</div>
+                <div class="multitable-card-meta">
+                    <span><i class="fas fa-list-ol"></i> ${tbl.rows} filas</span>
+                    <span><i class="fas fa-columns"></i> ${tbl.cols} col.</span>
+                    ${gridInfo}
+                </div>
+                <div class="multitable-card-meta" style="margin-top:5px; opacity:0.5; font-size:0.75rem;">
+                    ${colNames}
+                </div>
+            </div>
+            <div class="multitable-preview-mini">${preview}</div>
+            <i class="fas fa-chevron-right multitable-card-arrow"></i>
+        `;
+        card.addEventListener('click', () => {
+            modal.classList.add('hidden');
+            loadTableFromMulti(tbl.data);
+        });
+        cards.appendChild(card);
+    });
+
+    // Botón Combinar
+    const combineBtn = document.getElementById('btn-combine-tables');
+    if (combineBtn) {
+        combineBtn.onclick = () => {
+            modal.classList.add('hidden');
+            loadTableFromMulti(combineTablesData(tables));
+        };
+    }
+
+    // Cerrar
+    const closeBtn = document.getElementById('multitable-close-btn');
+    if (closeBtn) closeBtn.onclick = () => modal.classList.add('hidden');
+    modal.onclick = (e) => { if (e.target === modal) modal.classList.add('hidden'); };
+
+    moldingSection.classList.add('hidden');
+    modal.classList.remove('hidden');
+}
+
+/**
+ * Procesa una hoja de Excel con detección de múltiples tablas.
+ * Si hay solo una tabla → flujo normal. Si hay varias → muestra el modal.
+ */
+async function handleExcelSheetWithDetection(wb, sheetName) {
+    const sheet = wb.Sheets[sheetName];
+    const tables = detectTablesInSheet(sheet);
+
+    if (tables.length > 1) {
+        showMultiTableModal(tables, wb, sheetName);
+    } else {
+        moldingSection.classList.remove('hidden');
+        currentSheetName = sheetName;
+        const rawData = XLSX.utils.sheet_to_json(sheet);
+        await processData(rawData);
+    }
+}
+
+// ── Inyectar la detección al selector de hojas existente ──
+// Cada vez que el usuario seleccione una hoja del modal de hojas,
+// pasamos por el detector de tablas antes de procesar.
+(function patchSheetSelector() {
+    const origShowSheetSelector = showSheetSelector;
+    showSheetSelector = function(wb, sheetNames) {
+        const sheetModal = document.getElementById('sheet-modal');
+        const sheetList  = document.getElementById('sheet-buttons-list');
+        if (!sheetModal || !sheetList) return;
+
+        sheetList.innerHTML = '';
+        sheetNames.forEach(name => {
+            const btn = document.createElement('button');
+            btn.className = 'btn-sheet-option';
+            const isActive = name === currentSheetName;
+            btn.innerHTML = `
+                <span>
+                    <i class="fas fa-file-invoice" style="margin-right:10px;color:hsl(142,76%,40%)"></i>
+                    ${name}${isActive ? ' <span style="font-size:0.7rem;background:#DCFCE7;color:#166534;padding:2px 8px;border-radius:20px;margin-left:6px;">Activa</span>' : ''}
+                </span>
+                <i class="fas fa-arrow-right"></i>
+            `;
+            btn.addEventListener('click', async () => {
+                sheetModal.classList.add('hidden');
+                if (!dashboardSection.classList.contains('hidden')) {
+                    dashboardSection.classList.add('hidden');
+                } else {
+                    welcomeSection.classList.add('hidden');
+                }
+                moldingSection.classList.remove('hidden');
+                currentSheetName = name;
+                await handleExcelSheetWithDetection(wb, name);
+            });
+            sheetList.appendChild(btn);
+        });
+
+        const closeBtn = document.getElementById('sheet-close-btn');
+        if (closeBtn) closeBtn.onclick = () => sheetModal.classList.add('hidden');
+        sheetModal.onclick = (e) => { if (e.target === sheetModal) sheetModal.classList.add('hidden'); };
+        sheetModal.classList.remove('hidden');
+    };
+})();
+
+// ═══════════════════════════════════════════════════════
+// NUEVAS FUNCIONALIDADES DE USUARIO Y UX
+// ═══════════════════════════════════════════════════════
+
+// 1. Control del Consumo Mensual (Límite 10 análisis)
+function updateUsageProgress() {
+    const textVal = `${analysisCount} / 10`;
+    const percent = Math.min((analysisCount / 10) * 100, 100);
+    
+    // UI del Sidebar
+    const usageText = document.getElementById('usage-meter-text');
+    const usageFill = document.getElementById('usage-meter-fill');
+    if (usageText) usageText.textContent = textVal;
+    if (usageFill) usageFill.style.width = `${percent}%`;
+    
+    // UI de Plan y Facturación
+    const billingUsageText = document.getElementById('billing-usage-text');
+    const billingUsageFill = document.getElementById('billing-usage-fill');
+    if (billingUsageText) billingUsageText.textContent = `${analysisCount} de 10`;
+    if (billingUsageFill) billingUsageFill.style.width = `${percent}%`;
+}
+
+// 2. Historial de Archivos Subidos
+function addFileToHistory(fileInfo) {
+    // Evitar duplicados con el mismo nombre y fecha
+    const duplicate = fileHistory.some(f => f.name === fileInfo.name && f.date === fileInfo.date);
+    if (duplicate) return;
+
+    fileHistory.unshift(fileInfo); // Añadir al inicio
+    if (fileHistory.length > 5) fileHistory.pop(); // Mantener un max de 5 en historial visual
+    
+    localStorage.setItem('claytics-file-history', JSON.stringify(fileHistory));
+    renderHistory();
+}
+
+function renderHistory() {
+    const sidebarHistoryList = document.getElementById('sidebar-history-list');
+    const billingHistoryTableBody = document.getElementById('billing-history-table-body');
+    
+    // Render en Sidebar
+    if (sidebarHistoryList) {
+        if (fileHistory.length === 0) {
+            sidebarHistoryList.innerHTML = '<li class="history-empty">Ningún archivo subido aún</li>';
+        } else {
+            sidebarHistoryList.innerHTML = '';
+            fileHistory.forEach(file => {
+                const li = document.createElement('li');
+                li.className = 'history-item';
+                li.innerHTML = `<i class="fas fa-file-invoice"></i> ${file.name}`;
+                li.title = `${file.name} (${file.size})`;
+                li.addEventListener('click', () => loadHistoryFile(file.name, file.rows, file.cols));
+                sidebarHistoryList.appendChild(li);
+            });
+        }
+    }
+    
+    // Render en Pestaña "Mis Datos"
+    if (billingHistoryTableBody) {
+        if (fileHistory.length === 0) {
+            billingHistoryTableBody.innerHTML = `
+                <tr>
+                    <td colspan="6" style="text-align: center; color: var(--p-text); opacity: 0.6; padding: 30px;">
+                        Ningún archivo analizado aún en tu cuenta.
+                    </td>
+                </tr>`;
+        } else {
+            billingHistoryTableBody.innerHTML = '';
+            fileHistory.forEach(file => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td style="font-weight: 700; color: var(--p-dark);"><i class="fas fa-file-lines" style="color: var(--p-primary); margin-right: 8px;"></i>${file.name}</td>
+                    <td><span style="font-size: 0.75rem; background: #E2E8F0; padding: 2px 8px; border-radius: 6px; font-weight: 700;">${file.type}</span></td>
+                    <td>${file.size}</td>
+                    <td>${file.rows} filas x ${file.cols} col</td>
+                    <td>${file.date}</td>
+                    <td><button class="btn-load-history"><i class="fas fa-arrows-rotate"></i> Cargar</button></td>
+                `;
+                tr.querySelector('.btn-load-history').addEventListener('click', () => {
+                    loadHistoryFile(file.name, file.rows, file.cols);
+                });
+                billingHistoryTableBody.appendChild(tr);
+            });
+        }
+    }
+}
+
+// Simular carga de archivos del historial
+function loadHistoryFile(fileName, rowsCount, colsCount) {
+    const headers = ["ID", "Fecha", "Concepto", "Categoría", "Monto", "Estado"];
+    const categories = ["Tecnología", "Salud", "Finanzas", "Alimentos", "Servicios"];
+    const mockData = [];
+    const rows = parseInt(rowsCount) || 50;
+    
+    for (let i = 1; i <= rows; i++) {
+        const item = {
+            "ID": i,
+            "Fecha": new Date(2026, 0, i).toLocaleDateString(),
+            "Concepto": `Transacción ${i}`,
+            "Categoría": categories[i % categories.length],
+            "Monto": Math.floor(Math.random() * 5000) + 100,
+            "Estado": i % 3 === 0 ? "Pendiente" : "Completado"
+        };
+        mockData.push(item);
+    }
+    
+    currentFileName = fileName;
+    alert(`Cargando sesión recuperada del archivo: ${fileName}`);
+    
+    // Ocultar todas las secciones y pasar a animación
+    welcomeSection.classList.add('hidden');
+    const mainSections = document.querySelectorAll('.main-content > section');
+    mainSections.forEach(sec => sec.classList.add('hidden'));
+    
+    moldingSection.classList.remove('hidden');
+    
+    setTimeout(async () => {
+        await processData(mockData);
+    }, 1200);
+}
+
+// 3. Control de Navegación de Pestañas
+function initNavigation() {
+    const navButtons = document.querySelectorAll('.nav-btn[data-target]');
+    navButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const target = btn.getAttribute('data-target');
+            if (!target) return;
+            
+            navButtons.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            
+            // Ocultar todas las secciones principales
+            const mainSections = document.querySelectorAll('.main-content > section');
+            mainSections.forEach(sec => sec.classList.add('hidden'));
+            
+            // Si el dashboard está activo y se dio clic en "Nuevo Proyecto"
+            if (target === 'welcome-section') {
+                if (cachedRawData && cachedRawData.length > 0) {
+                    // Si ya se cargó datos, mostramos el dashboard en lugar de welcome
+                    dashboardSection.classList.remove('hidden');
+                    return;
+                }
+            }
+            
+            const targetSec = document.getElementById(target);
+            if (targetSec) targetSec.classList.remove('hidden');
+        });
+    });
+}
+
+// 4. Modo Oscuro/Modo Claro
+function initTheme() {
+    const themeCheckbox = document.getElementById('theme-dark-checkbox');
+    const savedTheme = localStorage.getItem('claytics-theme');
+    
+    if (savedTheme === 'dark') {
+        document.body.classList.add('dark-mode');
+        if (themeCheckbox) themeCheckbox.checked = true;
+    } else {
+        document.body.classList.remove('dark-mode');
+        if (themeCheckbox) themeCheckbox.checked = false;
+    }
+    
+    if (themeCheckbox) {
+        themeCheckbox.addEventListener('change', () => {
+            if (themeCheckbox.checked) {
+                document.body.classList.add('dark-mode');
+                localStorage.setItem('claytics-theme', 'dark');
+            } else {
+                document.body.classList.remove('dark-mode');
+                localStorage.setItem('claytics-theme', 'light');
+            }
+        });
+    }
+}
+
+// 5. Cambio de Contraseña (6 dígitos numéricos exactos)
+function initChangePassword() {
+    const changePasswordForm = document.getElementById('change-password-form');
+    if (changePasswordForm) {
+        changePasswordForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const currentPass = document.getElementById('current-password').value;
+            const newPass     = document.getElementById('new-password').value;
+            const confirmPass = document.getElementById('confirm-new-password').value;
+
+            const savedPass = localStorage.getItem('claytics-user-password') || '';
+
+            // Solo aplica para cuentas con contraseña (no social login)
+            if (!savedPass) {
+                alert('Tu cuenta fue creada con un proveedor externo (Google, iCloud, etc.). No puedes cambiar la contraseña desde aquí.');
+                return;
+            }
+
+            if (currentPass !== savedPass) {
+                alert('La contraseña actual ingresada es incorrecta.');
+                return;
+            }
+
+            // Validar: exactamente 6 dígitos numéricos
+            if (!/^\d{6}$/.test(newPass)) {
+                alert('La nueva contraseña debe ser exactamente 6 dígitos numéricos (ej: 123456).');
+                return;
+            }
+
+            if (newPass !== confirmPass) {
+                alert('La confirmación no coincide con la nueva contraseña.');
+                return;
+            }
+
+            localStorage.setItem('claytics-user-password', newPass);
+            alert('¡Contraseña actualizada con éxito!');
+            changePasswordForm.reset();
+        });
+    }
+}
+
+// 6. Rellenar Perfil (select para sector) y Guardar Datos
+function populateUserProfile(name, age, email, sector) {
+    const accName   = document.getElementById('account-name');
+    const accAge    = document.getElementById('account-age');
+    const accEmail  = document.getElementById('account-email');
+    const accSector = document.getElementById('account-sector');
+
+    if (accName)  accName.value  = name  || '';
+    if (accAge)   accAge.value   = age   || '';
+    if (accEmail) accEmail.value = email || '';
+
+    if (accSector) {
+        const knownSectors = ['Tecnología', 'Salud', 'Finanzas', 'Retail', 'Educación', 'Otro'];
+        if (knownSectors.includes(sector)) {
+            accSector.value = sector;
+        } else {
+            accSector.value = 'Otro';
+            const customGroup = document.getElementById('account-custom-sector-group');
+            const customInput = document.getElementById('account-custom-sector');
+            if (customGroup) customGroup.classList.remove('hidden');
+            if (customInput) customInput.value = sector;
+        }
+    }
+}
+
+function initSaveProfile() {
+    // Toggle sector personalizado en perfil
+    const accSectorSelect = document.getElementById('account-sector');
+    const accCustomGroup  = document.getElementById('account-custom-sector-group');
+    const accCustomInput  = document.getElementById('account-custom-sector');
+
+    if (accSectorSelect) {
+        accSectorSelect.addEventListener('change', () => {
+            if (accSectorSelect.value === 'Otro') {
+                if (accCustomGroup) accCustomGroup.classList.remove('hidden');
+            } else {
+                if (accCustomGroup) accCustomGroup.classList.add('hidden');
+                if (accCustomInput) accCustomInput.value = '';
+            }
+        });
+    }
+
+    // Guardar datos del perfil
+    const btnSaveProfile = document.getElementById('btn-save-profile');
+    if (btnSaveProfile) {
+        btnSaveProfile.addEventListener('click', () => {
+            const newName = document.getElementById('account-name')?.value.trim();
+            const newAge  = document.getElementById('account-age')?.value.trim();
+            let   newSector = accSectorSelect ? accSectorSelect.value : '';
+
+            if (newSector === 'Otro') {
+                newSector = (accCustomInput && accCustomInput.value.trim()) || 'Otro';
+            }
+
+            if (!newName) { alert('El nombre no puede estar vacío.'); return; }
+
+            localStorage.setItem('claytics-session-name',   newName);
+            localStorage.setItem('claytics-session-age',    newAge);
+            localStorage.setItem('claytics-session-sector', newSector);
+
+            // Actualizar sidebar en tiempo real
+            const sidebarName   = document.getElementById('sidebar-user-name');
+            const sidebarSector = document.getElementById('sidebar-user-sector');
+            if (sidebarName)   sidebarName.textContent   = newName;
+            if (sidebarSector) sidebarSector.textContent = newSector;
+
+            alert('¡Datos de perfil actualizados con éxito!');
+        });
+    }
+}
+
+// 7. Simulación de Upgrade a Plan Pro
+function initUpgradePlan() {
+    const btnUpgrade = document.getElementById('btn-upgrade-pro');
+    if (btnUpgrade) {
+        btnUpgrade.addEventListener('click', () => {
+            const confirmed = confirm('¿Deseas activar Claytics Pro por $19/mes?\n\n(Simulación de pago — sin cargo real)');
+            if (!confirmed) return;
+
+            // Actualizar badge del sidebar
+            const planBadge = document.getElementById('sidebar-user-plan');
+            if (planBadge) planBadge.textContent = 'Plan Pro';
+
+            // Actualizar tarjetas de billing
+            const freeBadge = document.getElementById('free-plan-status-badge');
+            const proBadge  = document.getElementById('pro-plan-status-badge');
+            if (freeBadge) { freeBadge.innerHTML = 'Inactivo'; freeBadge.className = 'plan-card-badge plan-inactive-badge'; }
+            if (proBadge)  { proBadge.innerHTML  = '<i class="fas fa-circle-check"></i> Plan Activo'; proBadge.className = 'plan-card-badge plan-free-badge'; }
+
+            // Deshabilitar el límite de cuota
+            localStorage.setItem('claytics-analysis-count', '0');
+            localStorage.setItem('claytics-plan', 'pro');
+
+            btnUpgrade.textContent = '✓ Plan Pro Activo';
+            btnUpgrade.disabled = true;
+            btnUpgrade.style.opacity = '0.6';
+
+            alert('¡Bienvenido a Claytics Pro! Ahora tienes análisis ilimitados.');
+        });
+    }
+}
+
+function showVerificationBanner(email) {
+    const banner    = document.getElementById('email-verification-banner');
+    const emailText = document.getElementById('verification-email-text');
+    if (banner && emailText) {
+        emailText.textContent = email;
+        banner.classList.remove('hidden');
+    }
+}
+
+function hideVerificationBanner() {
+    const banner = document.getElementById('email-verification-banner');
+    if (banner) banner.classList.add('hidden');
+}
+
+function initVerificationBanner() {
+    const resendBtn  = document.getElementById('btn-resend-verification');
+    const dismissBtn = document.getElementById('btn-dismiss-verification');
+    const banner     = document.getElementById('email-verification-banner');
+
+    if (resendBtn) {
+        resendBtn.addEventListener('click', () => {
+            const email = localStorage.getItem('claytics-session-email') || 'tu@correo.com';
+            alert(`¡Correo de verificación reenviado a ${email}!`);
+        });
+    }
+    if (dismissBtn && banner) {
+        dismissBtn.addEventListener('click', () => {
+            banner.classList.add('hidden');
+            localStorage.setItem('claytics-needs-verification', 'false');
+        });
+    }
+}
+
+// Inicialización al cargar la página (persistencia de sesión)
+(function initSessionOnLoad() {
+    const savedName   = localStorage.getItem('claytics-session-name');
+    const savedAge    = localStorage.getItem('claytics-session-age');
+    const savedEmail  = localStorage.getItem('claytics-session-email');
+    const savedSector = localStorage.getItem('claytics-session-sector');
+    const needsVerify = localStorage.getItem('claytics-needs-verification');
+
+    if (savedName) {
+        // Restaurar sidebar
+        const sidebarName   = document.getElementById('sidebar-user-name');
+        const sidebarSector = document.getElementById('sidebar-user-sector');
+        if (sidebarName)   sidebarName.textContent   = savedName;
+        if (sidebarSector) sidebarSector.textContent = savedSector;
+
+        populateUserProfile(savedName, savedAge, savedEmail, savedSector);
+
+        // Evitar scroll en body
+        document.body.classList.add('user-logged-in');
+
+        // Si el usuario está pendiente de verificación, mostrar pantalla restrictiva
+        const loginSec  = document.getElementById('login-section');
+        const verifSec  = document.getElementById('verification-section');
+        const appLayout = document.getElementById('logged-in-layout');
+
+        if (needsVerify === 'true') {
+            // Redirigir a la pantalla de verificación, NO al dashboard
+            if (loginSec)  loginSec.classList.add('hidden');
+            if (appLayout) appLayout.classList.add('hidden');
+            if (verifSec) {
+                const emailEl = document.getElementById('verification-screen-email');
+                if (emailEl) emailEl.textContent = savedEmail;
+                verifSec.classList.remove('hidden');
+            }
+            document.body.classList.remove('user-logged-in');
+        } else {
+            // Sesión verificada → entrar directo
+            if (loginSec)  loginSec.classList.add('hidden');
+            if (verifSec)  verifSec.classList.add('hidden');
+            if (appLayout) appLayout.classList.remove('hidden');
+            if (welcomeSection) welcomeSection.classList.remove('hidden');
+            hideVerificationBanner();
+        }
+    }
+
+    // Inicializadores UX
+    initNavigation();
+    initTheme();
+    initChangePassword();
+    initSaveProfile();
+    initUpgradePlan();
+    initVerificationBanner();
+    updateUsageProgress();
+    renderHistory();
+})();
+

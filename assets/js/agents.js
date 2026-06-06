@@ -590,6 +590,102 @@ class CleanAgent {
             }
         }
 
+        // ─────────────────────────────────────────
+        // PROBLEMA 7: Columnas con valores nulos/vacíos parciales
+        // (común cuando se combinan varias tablas en una)
+        // ─────────────────────────────────────────
+        const NULL_THRESHOLD = 0.3; // Reportar si más del 30% de los valores son nulos
+        const partialNullCols = [];
+
+        columns.forEach(col => {
+            const total = data.length;
+            if (total === 0) return;
+
+            const nullCount = data.filter(row => {
+                const v = row[col];
+                return v === null || v === undefined || v === '';
+            }).length;
+
+            const ratio = nullCount / total;
+
+            // Solo reportar si hay nulos pero no es una columna completamente vacía
+            // (las completamente vacías ya las detecta blank_cols)
+            if (nullCount > 0 && ratio < 1.0 && ratio >= NULL_THRESHOLD) {
+                partialNullCols.push({ col, nullCount, ratio });
+            }
+        });
+
+        if (partialNullCols.length > 0) {
+            const totalNulls = partialNullCols.reduce((sum, c) => sum + c.nullCount, 0);
+            const colSummary = partialNullCols
+                .slice(0, 4)
+                .map(c => `"${c.col}" (${Math.round(c.ratio * 100)}% vacío)`)
+                .join(', ');
+            const hasMore = partialNullCols.length > 4 ? ` y ${partialNullCols.length - 4} más` : '';
+
+            this.issues.push({
+                id: 'partial_nulls',
+                icon: 'fas fa-circle-half-stroke',
+                severity: 'medium',
+                title: `${totalNulls} celda(s) nulas en ${partialNullCols.length} columna(s) con datos incompletos`,
+                description: `Columnas con más del 30% de sus valores vacíos o nulos. Esto suele ocurrir al combinar varias tablas con estructuras diferentes. Puedes rellenar con un valor por defecto o eliminar las filas afectadas.`,
+                previewLabel: `${colSummary}${hasMore}`,
+                fixLabel: 'Rellenar celdas vacías con "—" (sin datos)',
+                _partialNullCols: partialNullCols,
+                fix: (d) => d.map(row => {
+                    const newRow = { ...row };
+                    partialNullCols.forEach(({ col }) => {
+                        const v = newRow[col];
+                        if (v === null || v === undefined || v === '') {
+                            newRow[col] = '—';
+                        }
+                    });
+                    return newRow;
+                })
+            });
+        }
+
+        // ─────────────────────────────────────────
+        // PROBLEMA 8: Filas semi-vacías
+        // Filas donde más de la mitad de sus celdas están vacías.
+        // Muy común al combinar tablas de diferente estructura.
+        // ─────────────────────────────────────────
+        const SEMI_EMPTY_THRESHOLD = 0.5; // Más del 50% de celdas vacías
+        const semiEmptyRows = [];
+
+        data.forEach((row, i) => {
+            const totalCols = columns.length;
+            if (totalCols === 0) return;
+            const nullCols = columns.filter(col => {
+                const v = row[col];
+                return v === null || v === undefined || v === '';
+            }).length;
+            const ratio = nullCols / totalCols;
+            if (ratio >= SEMI_EMPTY_THRESHOLD && ratio < 1.0) {
+                semiEmptyRows.push(i + 1);
+            }
+        });
+
+        if (semiEmptyRows.length > 0) {
+            this.issues.push({
+                id: 'semi_empty_rows',
+                icon: 'fas fa-table-cells',
+                severity: 'medium',
+                title: `${semiEmptyRows.length} fila(s) con más del 50% de datos vacíos`,
+                description: `Filas que tienen muy pocos datos útiles. Esto ocurre frecuentemente al combinar tablas con columnas diferentes. Puedes eliminarlas para tener un dataset más limpio.`,
+                previewLabel: `Filas afectadas (nro.): ${semiEmptyRows.slice(0, 8).join(', ')}${semiEmptyRows.length > 8 ? '...' : ''}`,
+                fixLabel: 'Eliminar filas con más del 50% de celdas vacías',
+                fix: (d) => d.filter((row, i) => {
+                    const totalCols = columns.length;
+                    const nullCols = columns.filter(col => {
+                        const v = row[col];
+                        return v === null || v === undefined || v === '';
+                    }).length;
+                    return (nullCols / totalCols) < SEMI_EMPTY_THRESHOLD;
+                })
+            });
+        }
+
         return this.issues;
     }
 

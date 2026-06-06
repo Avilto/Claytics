@@ -28,35 +28,121 @@
                 <h1>Claytics</h1>
             </header>
             <div class="login-card">
-                <h2>Crea tu cuenta</h2>
-                <p>Ingresa para empezar a moldear tus datos.</p>
-                <form id="login-form">
-                    <div class="form-group">
-                        <label>Nombre Completo</label>
-                        <input type="text" id="login-name" required placeholder="Ej. Ana Pérez">
-                    </div>
-                    <div class="form-group">
-                        <label>Edad</label>
-                        <input type="number" id="login-age" required placeholder="Ej. 28">
-                    </div>
-                    <div class="form-group">
-                        <label>Correo Electrónico</label>
-                        <input type="email" id="login-email" required placeholder="tu@correo.com">
-                    </div>
-                    <div class="form-group">
-                        <label>Sector de Trabajo</label>
-                        <select id="login-sector" required>
-                            <option value="">Selecciona tu sector</option>
-                            <option value="Tecnología">Tecnología</option>
-                            <option value="Salud">Salud</option>
-                            <option value="Finanzas">Finanzas</option>
-                            <option value="Retail">Retail / Ventas</option>
-                            <option value="Educación">Educación</option>
-                            <option value="Otro">Otro</option>
-                        </select>
-                    </div>
-                    <button type="submit" class="btn-start btn-login">Ingresar <i class="fas fa-arrow-right"></i></button>
-                </form>
+                <!-- VISTA 1: REGISTRO (CREAR CUENTA) -->
+                <div id="register-form-container">
+                    <h2>Crea tu cuenta</h2>
+                    <p>Regístrate para empezar a moldear tus datos.</p>
+                    <form id="register-form">
+                        <div class="form-group">
+                            <label>Nombre Completo</label>
+                            <input type="text" id="register-name" required placeholder="Ej. Ana Pérez">
+                        </div>
+                        <div class="form-group">
+                            <label>Edad</label>
+                            <input type="number" id="register-age" required placeholder="Ej. 28">
+                        </div>
+                        <div class="form-group">
+                            <label>Sector de Trabajo</label>
+                            <select id="register-sector" required>
+                                <option value="">Selecciona tu sector</option>
+                                <option value="Tecnología">Tecnología</option>
+                                <option value="Salud">Salud</option>
+                                <option value="Finanzas">Finanzas</option>
+                                <option value="Retail">Retail / Ventas</option>
+                                <option value="Educación">Educación</option>
+                                <option value="Otro">Otro</option>
+                            </select>
+                        </div>
+                        <div class="form-group hidden" id="register-custom-sector-group">
+                            <label>Especifica tu sector o trabajo</label>
+                            <input type="text" id="register-custom-sector" placeholder="Ej. Minería, Arte, etc.">
+                        </div>
+                        <div class="form-group">
+                            <label>Correo Electrónico</label>
+                            <input type="email" id="register-email" required placeholder="tu@correo.com">
+                        </div>
+                        <div class="form-group">
+                            <label>Clave (6 dígitos numéricos)</label>
+                            <input type="password" id="register-password" required pattern="[0-9]{6}" maxlength="6" inputmode="numeric" placeholder="••••••">
+                        </div>
+                        <div class="form-group">
+                            <label>Reconfirmar Clave</label>
+                            <input type="password" id="register-confirm-password" required pattern="[0-9]{6}" maxlength="6" inputmode="numeric" placeholder="••••••">
+                        </div>
+                        <button type="submit" class="btn-start btn-login">Registrarse <i class="fas fa-user-plus"></i></button>
+                    </form>
+                    <p class="auth-toggle-text">¿Ya tienes una cuenta? <a href="#" id="link-to-login">Inicia sesión</a></p>
+                </div>
+
+                <!-- VISTA 2: LOGIN (INICIAR SESIÓN) -->
+                <div id="login-form-container" class="hidden">
+                    <h2>Inicia sesión</h2>
+                    <p>Ingresa tus credenciales para acceder.</p>
+                    <form id="login-form">
+                        <div class="form-group">
+                            <label>Correo Electrónico</label>
+                            <input type="email" id="login-email" required placeholder="tu@correo.com">
+                        </div>
+                        <div class="form-group">
+                            <label>Clave (6 dígitos numéricos)</label>
+                            <input type="password" id="login-password" required pattern="[0-9]{6}" maxlength="6" inputmode="numeric" placeholder="••••••">
+                        </div>
+                        <button type="submit" class="btn-start btn-login">Ingresar <i class="fas fa-arrow-right"></i></button>
+                    </form>
+                    <p class="auth-toggle-text">¿No tienes cuenta? <a href="#" id="link-to-register">Regístrate aquí</a></p>
+                </div>
+
+                <div class="social-login-separator">
+                    <span>o accede con</span>
+                </div>
+
+                <div class="social-login-grid">
+                    <button type="button" class="btn-social btn-google" id="btn-google-login">
+                        <i class="fab fa-google"></i> Google
+                    </button>
+                    <button type="button" class="btn-social btn-microsoft" id="btn-microsoft-login">
+                        <i class="fab fa-windows"></i> Microsoft
+                    </button>
+                    <button type="button" class="btn-social btn-github" id="btn-github-login">
+                        <i class="fab fa-github"></i> GitHub
+                    </button>
+                    <button type="button" class="btn-social btn-icloud" id="btn-icloud-login">
+                        <i class="fas fa-cloud"></i> iCloud
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- PANTALLA 0.5: VERIFICACIÓN DE CORREO RESTRICTIVA -->
+        <section id="verification-section" class="login-view hidden">
+            <header class="brand">
+                <h1>Claytics</h1>
+            </header>
+            <div class="login-card" style="text-align: center;">
+                <div class="verification-icon-wrap" style="font-size: 3rem; color: #F59E0B; margin-bottom: 20px;">
+                    <i class="fas fa-envelope-open-text"></i>
+                </div>
+                <h2>Verifica tu correo</h2>
+                <p>Hemos enviado un enlace de confirmación a <strong id="verification-screen-email">tu@correo.com</strong>. Por seguridad, debes confirmar tu cuenta antes de ingresar.</p>
+                
+                <div class="verification-steps-box" style="background: #F8FAFC; border: 1.5px solid var(--p-border); padding: 18px; border-radius: 12px; margin-bottom: 20px; text-align: left;">
+                    <span style="font-weight: 700; font-size: 0.85rem; color: var(--p-dark); text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 8px;">¿Qué debes hacer?</span>
+                    <ol style="margin-left: 18px; font-size: 0.88rem; line-height: 1.5; color: var(--p-text);">
+                        <li>Revisa tu bandeja de entrada o spam.</li>
+                        <li>Haz clic en el botón de confirmación enviado.</li>
+                        <li>Una vez hecho, pulsa el botón de abajo para ingresar.</li>
+                    </ol>
+                </div>
+
+                <button id="btn-verify-success" class="btn-start btn-login" style="background: var(--p-success); color: white; border: none; width: 100%;">
+                    ¡Ya verifiqué mi correo! <i class="fas fa-circle-check"></i>
+                </button>
+                
+                <button id="btn-verify-resend" class="btn-connect" style="margin-top: 12px; width: 100%;">
+                    <i class="fas fa-paper-plane"></i> Reenviar correo de confirmación
+                </button>
+                
+                <p class="auth-toggle-text" style="margin-top: 20px;"><a href="#" id="link-verification-back"><i class="fas fa-arrow-left"></i> Volver al registro</a></p>
             </div>
         </section>
 
@@ -64,26 +150,70 @@
         <div id="logged-in-layout" class="hidden logged-in-layout">
             <!-- SIDEBAR -->
             <aside id="app-sidebar" class="app-sidebar">
+                <!-- Información de Usuario y Plan -->
                 <div class="sidebar-user">
                     <div class="user-avatar"><i class="fas fa-user-astronaut"></i></div>
                     <div class="user-info">
                         <h4 id="sidebar-user-name">Usuario</h4>
                         <p id="sidebar-user-sector">Sector</p>
+                        <div class="plan-badge" id="sidebar-user-plan">Plan Free</div>
                     </div>
                 </div>
+
+                <!-- Barra de Progreso de Consumo (10 análisis al mes) -->
+                <div class="usage-meter-container">
+                    <div class="usage-meter-header">
+                        <span>Consumo mensual</span>
+                        <strong id="usage-meter-text">0 / 10</strong>
+                    </div>
+                    <div class="usage-meter-bar">
+                        <div class="usage-meter-fill" id="usage-meter-fill" style="width: 0%;"></div>
+                    </div>
+                    <span class="usage-meter-caption">Cuota mensual de análisis</span>
+                </div>
+
+                <!-- Navegación -->
                 <nav class="sidebar-nav">
-                    <button class="nav-btn active"><i class="fas fa-folder-plus"></i> Nuevo Proyecto</button>
-                    <button class="nav-btn"><i class="fas fa-user"></i> Mi Perfil</button>
-                    <button class="nav-btn"><i class="fas fa-folder-open"></i> Mis Proyectos</button>
-                    <button class="nav-btn"><i class="fas fa-cog"></i> Configuración</button>
+                    <button class="nav-btn active" data-target="welcome-section"><i class="fas fa-folder-plus"></i> Nuevo Proyecto</button>
+                    <button class="nav-btn" data-target="account-section"><i class="fas fa-user"></i> Mi Cuenta <span class="nav-subtitle">Datos personales y seguridad</span></button>
+                    <button class="nav-btn" data-target="billing-section"><i class="fas fa-credit-card"></i> Plan y Facturación <span class="nav-subtitle">Consumo y pagos</span></button>
+                    <button class="nav-btn" data-target="data-section"><i class="fas fa-floppy-disk"></i> Mis Datos <span class="nav-subtitle">Archivos guardados</span></button>
                 </nav>
+
+                <!-- Historial de Archivos Recientes -->
+                <div class="sidebar-history">
+                    <h5>Historial de Archivos</h5>
+                    <ul class="history-list" id="sidebar-history-list">
+                        <li class="history-empty">Ningún archivo subido aún</li>
+                    </ul>
+                </div>
+
+                <!-- Footer del Sidebar: Toggle de Tema y Logout -->
                 <div class="sidebar-footer">
+                    <div class="theme-toggle-container">
+                        <span><i class="fas fa-moon"></i> Modo Oscuro</span>
+                        <label class="theme-switch">
+                            <input type="checkbox" id="theme-dark-checkbox">
+                            <span class="theme-slider"></span>
+                        </label>
+                    </div>
                     <button id="btn-logout" class="nav-btn btn-logout"><i class="fas fa-sign-out-alt"></i> Cerrar Sesión</button>
                 </div>
             </aside>
 
             <!-- CONTENIDO PRINCIPAL -->
             <div class="main-content">
+                <!-- BANNER DE VERIFICACIÓN DE EMAIL SIMULADO -->
+                <div id="email-verification-banner" class="verification-banner hidden">
+                    <div class="banner-content">
+                        <i class="fas fa-envelope-open-text"></i>
+                        <span>Hemos enviado un correo de verificación a <strong id="verification-email-text">tu@correo.com</strong>. Por favor verifica tu correo.</span>
+                    </div>
+                    <div class="banner-actions">
+                        <button id="btn-resend-verification" class="btn-resend-v"><i class="fas fa-paper-plane"></i> Reenviar</button>
+                        <button id="btn-dismiss-verification" class="btn-dismiss-v"><i class="fas fa-times"></i></button>
+                    </div>
+                </div>
                 <!-- SECCIÓN 1: BIENVENIDA / CARGA -->
                 <section id="welcome-section">
             <header class="brand">
@@ -112,6 +242,185 @@
             <button class="btn-start hidden" id="start-btn">
                 Analizar data <i class="fas fa-magic"></i>
             </button>
+        </section>
+
+        <!-- SECCIÓN: MI CUENTA -->
+        <section id="account-section" class="hidden">
+            <header class="section-header">
+                <h2><i class="fas fa-user-shield"></i> Mi Cuenta</h2>
+                <p>Gestiona tu información personal y configuración de seguridad.</p>
+            </header>
+            
+            <div class="account-grid">
+                <!-- Tarjeta de Datos Personales Editable -->
+                <div class="filter-panel-card">
+                    <div class="filter-panel-header">
+                        <span><i class="fas fa-id-card"></i> Datos Personales</span>
+                    </div>
+                    <div class="filter-panel-body" style="padding: 24px;">
+                        <div class="form-group">
+                            <label>Nombre Completo</label>
+                            <input type="text" id="account-name" placeholder="Ej. Ana Pérez">
+                        </div>
+                        <div class="form-group">
+                            <label>Edad</label>
+                            <input type="number" id="account-age" placeholder="Ej. 28">
+                        </div>
+                        <div class="form-group">
+                            <label>Correo Electrónico <span style="font-size:0.75rem;opacity:0.6;">(no modificable)</span></label>
+                            <input type="email" id="account-email" readonly style="opacity: 0.6; cursor: not-allowed; background: #E2E8F0;">
+                        </div>
+                        <div class="form-group">
+                            <label>Sector de Trabajo</label>
+                            <select id="account-sector">
+                                <option value="Tecnología">Tecnología</option>
+                                <option value="Salud">Salud</option>
+                                <option value="Finanzas">Finanzas</option>
+                                <option value="Retail">Retail / Ventas</option>
+                                <option value="Educación">Educación</option>
+                                <option value="Otro">Otro</option>
+                            </select>
+                        </div>
+                        <div class="form-group hidden" id="account-custom-sector-group">
+                            <label>Especifica tu sector</label>
+                            <input type="text" id="account-custom-sector" placeholder="Ej. Minería, Arte, etc.">
+                        </div>
+                        <button type="button" id="btn-save-profile" class="btn-start" style="margin-top: 15px; background: var(--p-success); color: white; border: none; width: 100%; display: flex; justify-content: center; align-items: center; gap: 8px;">
+                            Guardar Cambios <i class="fas fa-check"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Tarjeta de Seguridad (Cambio de Contraseña) -->
+                <div class="filter-panel-card">
+                    <div class="filter-panel-header">
+                        <span><i class="fas fa-key"></i> Seguridad y Contraseña</span>
+                    </div>
+                    <form id="change-password-form" class="filter-panel-body" style="padding: 24px;">
+                        <p style="font-size:0.85rem;color:var(--p-text);opacity:0.8;margin-bottom:16px;">La contraseña debe ser exactamente <strong>6 dígitos numéricos</strong>.</p>
+                        <div class="form-group">
+                            <label>Contraseña Actual</label>
+                            <input type="password" id="current-password" required maxlength="6" inputmode="numeric" pattern="[0-9]{6}" placeholder="••••••">
+                        </div>
+                        <div class="form-group">
+                            <label>Nueva Contraseña</label>
+                            <input type="password" id="new-password" required maxlength="6" inputmode="numeric" pattern="[0-9]{6}" placeholder="••••••">
+                        </div>
+                        <div class="form-group">
+                            <label>Confirmar Nueva Contraseña</label>
+                            <input type="password" id="confirm-new-password" required maxlength="6" inputmode="numeric" pattern="[0-9]{6}" placeholder="••••••">
+                        </div>
+                        <button type="submit" class="btn-start btn-login" style="margin-top: 15px; background: var(--p-primary); color: white;">
+                            Actualizar Contraseña <i class="fas fa-save"></i>
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </section>
+
+        <!-- SECCIÓN: PLAN Y FACTURACIÓN -->
+        <section id="billing-section" class="hidden">
+            <header class="section-header">
+                <h2><i class="fas fa-credit-card"></i> Plan y Facturación</h2>
+                <p>Revisa el consumo de tu cuota mensual y compara los planes disponibles.</p>
+            </header>
+
+            <div class="billing-grid">
+                <!-- Tarjeta Plan Free -->
+                <div class="filter-panel-card billing-plan-card" id="billing-free-card">
+                    <div class="plan-card-badge plan-free-badge" id="free-plan-status-badge"><i class="fas fa-circle-check"></i> Plan Activo</div>
+                    <div class="billing-plan-info">
+                        <div class="plan-details">
+                            <h3>Claytics Free</h3>
+                            <p class="plan-desc">Para análisis básico de datos.</p>
+                        </div>
+                        <div class="plan-price">
+                            <span class="price-value">$0</span>
+                            <span class="price-period">/ mes</span>
+                        </div>
+                    </div>
+                    <div class="billing-quota-section">
+                        <h4>Consumo Mensual</h4>
+                        <div class="usage-progress-container">
+                            <div class="usage-progress-info">
+                                <span>Análisis Realizados</span>
+                                <strong id="billing-usage-text">0 de 10</strong>
+                            </div>
+                            <div class="usage-progress-bar">
+                                <div class="usage-progress-fill" id="billing-usage-fill" style="width: 0%;"></div>
+                            </div>
+                            <p class="quota-caption">Se reinicia el primer día de cada mes.</p>
+                        </div>
+                    </div>
+                    <ul class="plan-features-list">
+                        <li><i class="fas fa-check"></i> Hasta 10 análisis por mes</li>
+                        <li><i class="fas fa-check"></i> Exportación básica (CSV, Excel)</li>
+                        <li><i class="fas fa-times plan-feature-no"></i> Sin análisis avanzados</li>
+                        <li><i class="fas fa-times plan-feature-no"></i> Sin soporte prioritario</li>
+                    </ul>
+                </div>
+
+                <!-- Tarjeta Plan Pro -->
+                <div class="filter-panel-card billing-plan-card billing-pro-card" id="billing-pro-card">
+                    <div class="plan-card-badge plan-pro-badge" id="pro-plan-status-badge">Disponible</div>
+                    <div class="billing-plan-info">
+                        <div class="plan-details">
+                            <h3>Claytics Pro</h3>
+                            <p class="plan-desc">Acceso profesional ilimitado.</p>
+                        </div>
+                        <div class="plan-price">
+                            <span class="price-value">$19</span>
+                            <span class="price-period">/ mes</span>
+                        </div>
+                    </div>
+                    <ul class="plan-features-list">
+                        <li><i class="fas fa-check"></i> Análisis <strong>Ilimitados</strong></li>
+                        <li><i class="fas fa-check"></i> Insights y KPIs avanzados</li>
+                        <li><i class="fas fa-check"></i> Exportación Premium (PDF, TXT)</li>
+                        <li><i class="fas fa-check"></i> Soporte prioritario 24/7</li>
+                    </ul>
+                    <button type="button" class="btn-start" id="btn-upgrade-pro" style="background: linear-gradient(135deg, #4F46E5, #6366F1); color: white; width: 100%; border: none; margin-top: 20px;">
+                        Activar Plan Pro <i class="fas fa-arrow-up"></i>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- SECCIÓN: MIS DATOS -->
+        <section id="data-section" class="hidden">
+            <header class="section-header">
+                <h2><i class="fas fa-floppy-disk"></i> Mis Datos</h2>
+                <p>Accede e inspecciona los archivos que has analizado en tu cuenta.</p>
+            </header>
+
+            <div class="filter-panel-card">
+                <div class="filter-panel-header">
+                    <span><i class="fas fa-list"></i> Historial de Archivos Procesados</span>
+                </div>
+                <div class="filter-panel-body" style="padding: 20px;">
+                    <div class="table-wrapper">
+                        <table class="history-table-full">
+                            <thead>
+                                <tr>
+                                    <th>Archivo</th>
+                                    <th>Formato</th>
+                                    <th>Tamaño</th>
+                                    <th>Dimensiones</th>
+                                    <th>Fecha</th>
+                                    <th>Acción</th>
+                                </tr>
+                            </thead>
+                            <tbody id="billing-history-table-body">
+                                <tr>
+                                    <td colspan="6" style="text-align: center; color: var(--p-text); opacity: 0.6; padding: 30px;">
+                                        Ningún archivo analizado aún en tu cuenta.
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
         </section>
 
         <!-- SECCIÓN 2: PROCESANDO (MOLDING) -->
@@ -521,6 +830,55 @@
                     <i class="fas fa-heart" style="color: #F43F5E;"></i>
                     <h3>¡Gracias!</h3>
                     <p>Tu comentario ha sido guardado. Nos ayudará a ser mejores.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════
+         MODAL: MÚLTIPLES TABLAS EN HOJA
+         ══════════════════════════════════════════════ -->
+    <div id="multitable-modal" class="multitable-modal hidden">
+        <div class="multitable-panel">
+            <div class="multitable-header">
+                <div class="multitable-header-left">
+                    <div class="multitable-agent-icon"><i class="fas fa-table-cells-large"></i></div>
+                    <div>
+                        <div class="multitable-agent-label">Detector de Tablas</div>
+                        <h3 class="multitable-title">Se encontraron varias tablas</h3>
+                    </div>
+                </div>
+                <button class="multitable-close-btn" id="multitable-close-btn">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="multitable-body">
+                <p class="multitable-subtitle" id="multitable-subtitle">
+                    Esta hoja contiene <strong id="multitable-count">2</strong> tablas separadas.
+                    ¿Cuál deseas analizar?
+                </p>
+
+                <!-- Layout de orientación detectada -->
+                <div class="multitable-orientation" id="multitable-orientation">
+                    <i class="fas fa-info-circle"></i>
+                    <span id="multitable-orientation-text">Tablas detectadas en disposición vertical</span>
+                </div>
+
+                <!-- Grid de tarjetas de tablas -->
+                <div class="multitable-cards" id="multitable-cards">
+                    <!-- Se puebla dinámicamente -->
+                </div>
+
+                <!-- Opción de combinar tablas -->
+                <div class="multitable-combine-section" id="multitable-combine-section">
+                    <div class="multitable-divider">
+                        <span>o también puedes</span>
+                    </div>
+                    <button class="btn-combine-tables" id="btn-combine-tables">
+                        <i class="fas fa-object-group"></i>
+                        Combinar todas las tablas en una sola
+                    </button>
+                    <p class="combine-hint">Intenta unir los datos si las columnas son compatibles.</p>
                 </div>
             </div>
         </div>
